@@ -1,15 +1,52 @@
 import SwiftUI
 import WebKit
+import PDFKit
 
 struct LegalDocumentsDashboardView: View {
+
+    private struct HouseDeedDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
+    private let houseDeeds: [HouseDeedDoc] = [
+        HouseDeedDoc(assetName: "PTH11996 - Title sheet",
+                     displayTitle: "PTH11996 – Title sheet",
+                     accent: .brown),
+        HouseDeedDoc(assetName: "PTH11996 - Title Plan",
+                     displayTitle: "PTH11996 – Title Plan",
+                     accent: .mint),
+        HouseDeedDoc(assetName: "PTH30329 - Title sheet",
+                     displayTitle: "PTH30329 – Title sheet",
+                     accent: .orange),
+        HouseDeedDoc(assetName: "PTH30329 - Title Plan (A4 Print Version)",
+                     displayTitle: "PTH30329 – Title Plan (A4)",
+                     accent: .indigo),
+        HouseDeedDoc(assetName: "PTH30329 - Title Plan (A0 Viewing Version)",
+                     displayTitle: "PTH30329 – Title Plan (A0)",
+                     accent: .teal)
+    ]
+
+    private let twoColumnGrid = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
+
+    @State private var selectedHouseDeed: HouseDeedDoc?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
                 songSection
+                houseDeedsSection
             }
             .padding(.top, 4)
             .padding(.bottom, 4)
+        }
+        .sheet(item: $selectedHouseDeed) { doc in
+            fullscreenHouseDeedViewer(for: doc)
         }
     }
 
@@ -45,6 +82,139 @@ struct LegalDocumentsDashboardView: View {
         }
     }
 
+    // MARK: - House Deeds Section
+
+    private var houseDeedsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "House Deeds",
+                          systemImage: "house.and.flag.fill",
+                          tint: .brown)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Tap any card below to open and read the full Land Registry PDF.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(columns: twoColumnGrid, alignment: .leading, spacing: 14) {
+                        ForEach(houseDeeds) { doc in
+                            houseDeedThumbnail(doc)
+                        }
+                    }
+                }
+                .padding(14)
+            }
+        }
+    }
+
+    private func houseDeedThumbnail(_ doc: HouseDeedDoc) -> some View {
+        Button(action: { selectedHouseDeed = doc }) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    Image(doc.assetName)
+                        .resizable()
+                        .aspectRatio(1.33, contentMode: .fill)
+                        .frame(height: 140)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 1)
+                        )
+
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 26, height: 26)
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(doc.accent)
+                    }
+                    .padding(10)
+                }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(doc.displayTitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.richtext.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Tap to open PDF")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func fullscreenHouseDeedViewer(for doc: HouseDeedDoc) -> some View {
+        if let pdfURL = Bundle.main.url(forResource: doc.assetName, withExtension: "pdf") {
+            PDFKitViewerSheet(url: pdfURL, title: doc.displayTitle, onClose: { selectedHouseDeed = nil })
+        } else if let fallback = HouseDeedPDFLoader.url(forAssetNamed: doc.assetName) {
+            PDFKitViewerSheet(url: fallback, title: doc.displayTitle, onClose: { selectedHouseDeed = nil })
+        } else {
+            imageFallbackViewer(for: doc)
+        }
+    }
+
+    private func imageFallbackViewer(for doc: HouseDeedDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedHouseDeed = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
+                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+        }
+    }
+
     // MARK: - Helpers
 
     private func sectionHeader(title: String, systemImage: String, tint: Color) -> some View {
@@ -73,5 +243,93 @@ struct LegalDocumentsDashboardView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color(.separator), lineWidth: 0.5)
             )
+    }
+}
+
+// MARK: - PDFKit Fullscreen Viewer (SwiftUI -> UIKit)
+
+private struct PDFKitViewerSheet: View {
+    let url: URL
+    let title: String
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
+                PDFKitViewRepresented(url: url)
+                    .ignoresSafeArea(edges: .bottom)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ShareLink(item: url, preview: SharePreview(title, image: Image(systemName: "doc.richtext.fill"))) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title3)
+                    }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onClose) {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.quaternary)
+                            )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct PDFKitViewRepresented: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.usePageViewController(true, withViewOptions: [UIPageViewController.OptionsKey.interPageSpacing: 8])
+        pdfView.displaysPageBreaks = true
+        pdfView.pageBreakMargins = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        pdfView.backgroundColor = .systemGroupedBackground
+        pdfView.document = PDFDocument(url: url)
+        return pdfView
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {}
+}
+
+// MARK: - House Deed PDF Locator (bundle or asset catalog fallback paths)
+
+private enum HouseDeedPDFLoader {
+    static func url(forAssetNamed name: String) -> URL? {
+        if let loose = Bundle.main.url(forResource: name, withExtension: "pdf") {
+            return loose
+        }
+        let resourceRoot = Bundle.main.resourceURL ?? URL(fileURLWithPath: "")
+        let candidates = [
+            resourceRoot.appendingPathComponent("\(name).pdf"),
+            resourceRoot.appendingPathComponent("Assets.car"),
+            resourceRoot.appendingPathComponent("\(name).imageset/\(name).pdf")
+        ]
+        for url in candidates {
+            if FileManager.default.fileExists(atPath: url.path), url.pathExtension.lowercased() == "pdf" {
+                return url
+            }
+        }
+        return nil
     }
 }
