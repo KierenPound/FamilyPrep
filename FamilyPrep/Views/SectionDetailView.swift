@@ -216,7 +216,15 @@ struct SectionDetailView: View {
     private func checklistRow(for item: ChecklistItem) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: {
-                Task { try? await repository.toggleChecklistItem(item) }
+                let newState = !item.isCompleted
+                item.isCompleted = newState
+                Task {
+                    do {
+                        try await repository.setChecklistItem(item, isCompleted: newState)
+                    } catch {
+                        await MainActor.run { item.isCompleted = !newState }
+                    }
+                }
             }) {
                 Image(systemName: item.isCompleted
                       ? "checkmark.circle.fill"
@@ -256,7 +264,15 @@ struct SectionDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            Task { try? await repository.toggleChecklistItem(item) }
+            let newState = !item.isCompleted
+            item.isCompleted = newState
+            Task {
+                do {
+                    try await repository.setChecklistItem(item, isCompleted: newState)
+                } catch {
+                    await MainActor.run { item.isCompleted = !newState }
+                }
+            }
         }
         .padding(12)
         .background(

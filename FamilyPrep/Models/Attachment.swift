@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum AttachmentType: String, Codable {
     case photo
@@ -6,7 +7,7 @@ enum AttachmentType: String, Codable {
     case unknown
 }
 
-class Attachment: Identifiable, Codable {
+@Observable class Attachment: Identifiable, Codable {
     var id: String
     var fileName: String
     var type: AttachmentType

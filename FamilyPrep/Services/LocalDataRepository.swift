@@ -196,8 +196,21 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
 
     func toggleChecklistItem(_ item: ChecklistItem) async throws {
         item.isCompleted.toggle()
-        if let section = sections.first(where: { $0.checklistItems.contains(where: { $0.id == item.id }) }) {
+        if let sectionIndex = sections.firstIndex(where: { $0.checklistItems.contains(where: { $0.id == item.id }) }) {
+            let section = sections[sectionIndex]
             section.updatedAt = Date()
+            sections[sectionIndex] = section
+            try saveToDisk()
+            try await syncSectionToFirebase(section)
+        }
+    }
+
+    func setChecklistItem(_ item: ChecklistItem, isCompleted: Bool) async throws {
+        item.isCompleted = isCompleted
+        if let sectionIndex = sections.firstIndex(where: { $0.checklistItems.contains(where: { $0.id == item.id }) }) {
+            let section = sections[sectionIndex]
+            section.updatedAt = Date()
+            sections[sectionIndex] = section
             try saveToDisk()
             try await syncSectionToFirebase(section)
         }

@@ -16,6 +16,7 @@ protocol DataRepositoryProtocol: ObservableObject {
 
     func addChecklistItem(to section: PrepSection, text: String) async throws
     func toggleChecklistItem(_ item: ChecklistItem) async throws
+    func setChecklistItem(_ item: ChecklistItem, isCompleted: Bool) async throws
     func deleteChecklistItem(_ item: ChecklistItem, from section: PrepSection) async throws
 
     func uploadPhoto(_ photo: PhotosPickerItem, to section: PrepSection) async throws -> Attachment
