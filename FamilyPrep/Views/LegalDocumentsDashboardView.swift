@@ -39,8 +39,8 @@ struct LegalDocumentsDashboardView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
-                songSection
                 houseDeedsSection
+                songSection
             }
             .padding(.top, 4)
             .padding(.bottom, 4)
