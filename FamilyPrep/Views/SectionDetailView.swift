@@ -1,0 +1,305 @@
+import SwiftUI
+
+struct SectionDetailView: View {
+    @EnvironmentObject private var repository: LocalDataRepository
+    let section: PrepSection
+    @State private var newChecklistText: String = ""
+    @State private var editingYouTubeURL: String = ""
+    @FocusState private var isNotesFocused: Bool
+
+    private var videoID: String {
+        YouTubePlayerView.extractVideoID(from: section.youtubeURL)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                headerSection
+                notesSection
+                youtubeSection
+                checklistSection
+                attachmentsSection
+                footerSection
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 32)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .onAppear {
+            editingYouTubeURL = section.youtubeURL
+        }
+        .onDisappear {
+            saveNotesIfNeeded()
+            saveYouTubeURLIfNeeded()
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(section.title)
+                .font(.largeTitle).bold()
+                .foregroundStyle(.primary)
+            HStack(spacing: 10) {
+                Label("\(section.checklistItems.filter { $0.isCompleted }.count)/\(section.checklistItems.count)",
+                      systemImage: "checklist")
+                if section.isStandard {
+                    Label("Standard", systemImage: "star.fill")
+                        .foregroundStyle(.yellow)
+                }
+                Spacer()
+                Text(section.updatedAt, format: .dateTime.day().month().year().hour().minute())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.top, 12)
+    }
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Notes", systemImage: "note.text")
+                .font(.title3.bold())
+
+            ZStack(alignment: .topLeading) {
+                if section.notes.isEmpty && !isNotesFocused {
+                    Text("Type notes, instructions, or important details here...")
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 14)
+                        .padding(.leading, 14)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: Binding(
+                    get: { section.notes },
+                    set: { newValue in
+                        section.notes = newValue
+                        throttleSaveSection()
+                    }
+                ))
+                    .focused($isNotesFocused)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 140)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color(.separator), lineWidth: 0.5)
+                    )
+            }
+        }
+    }
+
+    private var youtubeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("YouTube Video", systemImage: "play.tv.fill")
+                .font(.title3.bold())
+
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .foregroundStyle(.secondary)
+                TextField("Paste YouTube URL here...", text: $editingYouTubeURL)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit {
+                        saveYouTubeURLIfNeeded()
+                    }
+                if !editingYouTubeURL.isEmpty {
+                    Button(role: .destructive, action: {
+                        editingYouTubeURL = ""
+                        section.youtubeURL = ""
+                        Task { try? await repository.updateSection(section) }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(.separator), lineWidth: 0.5)
+            )
+
+            if !editingYouTubeURL.isEmpty && videoID.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("Invalid YouTube URL. Try a format like https://youtu.be/dQw4w9WgXcQ")
+                }
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+
+            Color.black
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16/9, contentMode: .fit)
+                .cornerRadius(14)
+                .overlay {
+                    YouTubePlayerView(videoID: videoID)
+                        .cornerRadius(14)
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(.separator), lineWidth: 0.5)
+                )
+        }
+    }
+
+    private var checklistSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Checklist", systemImage: "checklist.checked")
+                    .font(.title3.bold())
+                Spacer()
+                Text("\(completedCount)/\(section.checklistItems.count)")
+                    .font(.caption).monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(section.checklistItems.sorted(by: { $0.orderIndex < $1.orderIndex })) { item in
+                    checklistRow(for: item)
+                }
+
+                HStack(spacing: 10) {
+                    TextField("Add a new item...", text: $newChecklistText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { addChecklistItem() }
+                    Button(action: addChecklistItem) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.tint)
+                    }
+                    .disabled(newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(.horizontal, 6)
+            }
+        }
+    }
+
+    private var completedCount: Int {
+        section.checklistItems.filter { $0.isCompleted }.count
+    }
+
+    private func checklistRow(for item: ChecklistItem) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button(action: {
+                Task { try? await repository.toggleChecklistItem(item) }
+            }) {
+                Image(systemName: item.isCompleted
+                      ? "checkmark.circle.fill"
+                      : "circle")
+                    .font(.title2)
+                    .foregroundStyle(item.isCompleted ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Item", text: Binding(
+                    get: { item.text },
+                    set: { item.text = $0 }
+                ))
+                    .font(.body)
+                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                    .strikethrough(item.isCompleted, color: .secondary)
+                    .onSubmit {
+                        Task { try? await repository.updateSection(section) }
+                    }
+                    .onChange(of: item.text) { _, _ in
+                        throttleSaveSection()
+                    }
+            }
+
+            Menu {
+                Button(role: .destructive, action: {
+                    Task { try? await repository.deleteChecklistItem(item, from: section) }
+                }) {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private func addChecklistItem() {
+        let text = newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        Task {
+            try? await repository.addChecklistItem(to: section, text: text)
+        }
+        newChecklistText = ""
+    }
+
+    private var attachmentsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            AttachmentsView(section: section)
+        }
+    }
+
+    private var footerSection: some View {
+        VStack(spacing: 6) {
+            Text("All data stored locally. When Firebase is configured,")
+            + Text(" changes sync instantly across iOS and Android.")
+        }
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .multilineTextAlignment(.center)
+        .padding(.top, 16)
+    }
+
+    @State private var saveTask: Task<Void, Never>?
+
+    private func throttleSaveSection() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            Task {
+                try? await repository.updateSection(section)
+            }
+        }
+    }
+
+    private func saveNotesIfNeeded() {
+        if !section.notes.isEmpty {
+            Task { try? await repository.updateSection(section) }
+        }
+    }
+
+    private func saveYouTubeURLIfNeeded() {
+        if editingYouTubeURL != section.youtubeURL {
+            section.youtubeURL = editingYouTubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            Task { try? await repository.updateSection(section) }
+        }
+    }
+}
+
+#Preview {
+    let repo = LocalDataRepository()
+    let sample = PrepSection(title: "Sample Section", orderIndex: 0, isStandard: true, notes: "Sample notes content here with multiple lines to show the editor.", youtubeURL: "")
+    sample.checklistItems.append(ChecklistItem(text: "Do this thing", isCompleted: true, orderIndex: 0))
+    sample.checklistItems.append(ChecklistItem(text: "Then do this other very important step that is long", isCompleted: false, orderIndex: 1))
+    return NavigationStack {
+        SectionDetailView(section: sample)
+            .environmentObject(repo)
+    }
+}

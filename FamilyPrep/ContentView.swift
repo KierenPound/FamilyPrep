@@ -1,24 +1,26 @@
-//
-//  ContentView.swift
-//  FamilyPrep
-//
-//  Created by Kieren on 02/10/2026.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var repository: LocalDataRepository
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        HomeDashboardView()
+            .alert(
+                "Something went wrong",
+                isPresented: .constant(repository.errorMessage != nil),
+                presenting: repository.errorMessage
+            ) { _ in
+                Button("OK") {
+                    repository.errorMessage = nil
+                }
+            } message: { msg in
+                Text(msg)
+            }
     }
 }
 
 #Preview {
-    ContentView()
+    let repo = LocalDataRepository()
+    return ContentView()
+        .environmentObject(repo)
 }
