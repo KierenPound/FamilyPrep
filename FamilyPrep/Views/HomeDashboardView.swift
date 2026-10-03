@@ -143,10 +143,6 @@ struct SectionRowView: View {
             }
 
             Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 6)
     }

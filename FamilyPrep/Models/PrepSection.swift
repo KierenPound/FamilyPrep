@@ -1,6 +1,7 @@
 import Foundation
+import Observation
 
-class PrepSection: Identifiable, Codable {
+@Observable class PrepSection: Identifiable, Codable {
     var id: String
     var title: String
     var orderIndex: Int

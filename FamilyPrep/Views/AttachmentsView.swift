@@ -131,9 +131,12 @@ struct AttachmentCard: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(attachment.fileName)
-                        .font(.caption).bold()
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
                         .lineLimit(2)
-                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .minimumScaleFactor(0.8)
+                        .padding(.trailing, 4)
                     Text(formattedSize)
                         .font(.caption2)
                         .foregroundStyle(.secondary)

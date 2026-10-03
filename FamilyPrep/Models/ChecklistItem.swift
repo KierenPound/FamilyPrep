@@ -1,6 +1,7 @@
 import Foundation
+import Observation
 
-class ChecklistItem: Identifiable, Codable {
+@Observable class ChecklistItem: Identifiable, Codable {
     var id: String
     var text: String
     var isCompleted: Bool

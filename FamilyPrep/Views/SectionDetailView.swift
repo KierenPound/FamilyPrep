@@ -8,13 +8,16 @@ struct SectionDetailView: View {
     @FocusState private var isNotesFocused: Bool
 
     private var videoID: String {
-        YouTubePlayerView.extractVideoID(from: section.youtubeURL)
+        YouTubePlayerView.extractVideoID(from: section.youtubeURL) ?? ""
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 headerSection
+                if section.title == "What to Do First" {
+                    richMediaDashboardSection
+                }
                 notesSection
                 youtubeSection
                 checklistSection
@@ -33,6 +36,25 @@ struct SectionDetailView: View {
             saveNotesIfNeeded()
             saveYouTubeURLIfNeeded()
         }
+    }
+
+    private var richMediaDashboardSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Reference Dashboard", systemImage: "display.2")
+                .font(.title3.bold())
+                .foregroundStyle(.primary)
+
+            WhatToDoFirstDashboardView()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(.systemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color(.separator).opacity(0.4), lineWidth: 0.6)
+        )
     }
 
     private var headerSection: some View {
@@ -231,6 +253,10 @@ struct SectionDetailView: View {
                     .foregroundStyle(.secondary)
             }
             .menuStyle(.borderlessButton)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            Task { try? await repository.toggleChecklistItem(item) }
         }
         .padding(12)
         .background(

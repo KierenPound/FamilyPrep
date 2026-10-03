@@ -9,6 +9,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         let webConfiguration = WKWebViewConfiguration()
         webConfiguration.allowsInlineMediaPlayback = true
         webConfiguration.mediaTypesRequiringUserActionForPlayback = []
+        webConfiguration.websiteDataStore = .nonPersistent()
 
         let webView = WKWebView(frame: .zero, configuration: webConfiguration)
         webView.navigationDelegate = context.coordinator
@@ -16,18 +17,21 @@ struct YouTubePlayerView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        guard !videoID.isEmpty else {
+        let cleanID = sanitizeVideoID(videoID)
+        guard !cleanID.isEmpty else {
             webView.loadHTMLString(emptyPlaceholderHTML, baseURL: nil)
+            context.coordinator.lastLoadedID = ""
             return
         }
-        if context.coordinator.lastLoadedID == videoID { return }
-        context.coordinator.lastLoadedID = videoID
-        let html = embedHTML(for: videoID)
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com")!)
+        if context.coordinator.lastLoadedID == cleanID { return }
+        context.coordinator.lastLoadedID = cleanID
+        let html = embedHTML(for: cleanID)
+        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com")!)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -36,6 +40,19 @@ struct YouTubePlayerView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedID: String = ""
+    }
+
+    private func sanitizeVideoID(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let direct = Self.extractVideoID(from: trimmed), !direct.isEmpty {
+            let legal = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+            let filtered = String(trimmed.unicodeScalars.filter { legal.contains($0) })
+            return String(filtered.prefix(11))
+        }
+        let legal = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        let filtered = String(trimmed.unicodeScalars.filter { legal.contains($0) })
+        return String(filtered.prefix(11))
     }
 
     private var emptyPlaceholderHTML: String {
@@ -61,7 +78,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         """
     }
 
-    private func embedHTML(for videoID: String) -> String {
+    private func embedHTML(for cleanID: String) -> String {
         let fs = allowFullscreen ? "allowfullscreen" : ""
         return """
         <!DOCTYPE html>
@@ -78,9 +95,11 @@ struct YouTubePlayerView: UIViewRepresentable {
             <div class="player">
                 <iframe id="ytplayer"
                         type="text/html"
-                        src="https://www.youtube.com/embed/\(videoID)?rel=0&playsinline=1&modestbranding=1"
+                        src="https://www.youtube-nocookie.com/embed/\(cleanID)?rel=0&playsinline=1&modestbranding=1&origin=https://www.youtube-nocookie.com&widget_referrer=1&iv_load_policy=3&fs=1"
                         frameborder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                        referrerpolicy="no-referrer-when-downgrade"
+                        allowpaymentrequest="false"
                         \(fs)>
                 </iframe>
             </div>
@@ -91,33 +110,32 @@ struct YouTubePlayerView: UIViewRepresentable {
 }
 
 extension YouTubePlayerView {
-    static func extractVideoID(from urlString: String) -> String {
+    static func extractVideoID(from urlString: String) -> String? {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return "" }
-        let host = url.host?.lowercased() ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.count == 11, !trimmed.contains("/"), !trimmed.contains(" ") {
+            return trimmed
+        }
+        guard let url = URL(string: trimmed) else { return nil }
+        let host = (url.host ?? "").lowercased()
 
         if host.contains("youtu.be") {
             let id = url.lastPathComponent
-            return id.isEmpty ? "" : id
+            return id.isEmpty ? nil : id
         }
 
         if host.contains("youtube.com") || host.contains("youtube-nocookie.com") || host.contains("m.youtube.com") {
             if let comps = URLComponents(url: url, resolvingAgainstBaseURL: true) {
                 for query in comps.queryItems ?? [] where query.name == "v" {
-                    return query.value ?? ""
+                    if let v = query.value, !v.isEmpty { return v }
                 }
-                if url.pathComponents.count >= 3, url.pathComponents[1] == "embed" {
-                    return url.pathComponents[2]
-                }
-                if url.pathComponents.count >= 3, url.pathComponents[1] == "shorts" {
-                    return url.pathComponents[2]
-                }
+                let pc = url.pathComponents
+                if pc.count >= 3, pc[1] == "embed" { return pc[2] }
+                if pc.count >= 3, pc[1] == "shorts" { return pc[2] }
+                if pc.count >= 3, pc[1] == "live" { return pc[2] }
             }
         }
 
-        if trimmed.count == 11, !trimmed.contains("/"), !trimmed.contains(" ") {
-            return trimmed
-        }
-        return ""
+        return nil
     }
 }
