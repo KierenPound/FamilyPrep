@@ -252,7 +252,19 @@ struct SectionDetailView: View {
 
             Menu {
                 Button(role: .destructive, action: {
-                    Task { try? await repository.deleteChecklistItem(item, from: section) }
+                    let snapshot = item
+                    section.checklistItems.removeAll { $0.id == snapshot.id }
+                    Task {
+                        do {
+                            try await repository.deleteChecklistItem(snapshot, from: section)
+                        } catch {
+                            await MainActor.run {
+                                if !section.checklistItems.contains(where: { $0.id == snapshot.id }) {
+                                    section.checklistItems.append(snapshot)
+                                }
+                            }
+                        }
+                    }
                 }) {
                     Label("Delete", systemImage: "trash")
                 }
@@ -284,10 +296,21 @@ struct SectionDetailView: View {
     private func addChecklistItem() {
         let text = newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        Task {
-            try? await repository.addChecklistItem(to: section, text: text)
-        }
+        let nextOrder = (section.checklistItems.map { $0.orderIndex }.max() ?? -1) + 1
+        let newItem = ChecklistItem(text: text, isCompleted: false, orderIndex: nextOrder)
+        section.checklistItems.append(newItem)
+        let snapshot = newItem
         newChecklistText = ""
+        Task {
+            do {
+                try await repository.addChecklistItem(to: section, text: text)
+            } catch {
+                await MainActor.run {
+                    section.checklistItems.removeAll { $0.id == snapshot.id }
+                    repository.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     private var attachmentsSection: some View {

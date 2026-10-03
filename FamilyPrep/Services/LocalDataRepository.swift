@@ -190,6 +190,9 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
         let item = ChecklistItem(text: text, orderIndex: nextOrder)
         section.checklistItems.append(item)
         section.updatedAt = Date()
+        if let sectionIndex = sections.firstIndex(where: { $0.id == section.id }) {
+            sections[sectionIndex] = section
+        }
         try saveToDisk()
         try await syncSectionToFirebase(section)
     }
@@ -219,6 +222,9 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
     func deleteChecklistItem(_ item: ChecklistItem, from section: PrepSection) async throws {
         section.checklistItems.removeAll { $0.id == item.id }
         section.updatedAt = Date()
+        if let sectionIndex = sections.firstIndex(where: { $0.id == section.id }) {
+            sections[sectionIndex] = section
+        }
         try saveToDisk()
         try await syncSectionToFirebase(section)
     }
