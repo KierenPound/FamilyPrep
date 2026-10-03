@@ -65,7 +65,7 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
                 "Secure the home and vehicles",
                 "Gather financial account information"
             ]),
-            ("Legal Documents", "", [
+            ("Legal Documents", "https://youtu.be/AL8chWFuM-s", [
                 "Last Will and Testament",
                 "Power of Attorney (Financial)",
                 "Power of Attorney (Medical)",
