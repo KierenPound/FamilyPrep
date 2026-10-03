@@ -58,7 +58,7 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
 
     private func seedStandardSections() throws {
         let standardTitles: [(title: String, youtube: String, sampleItems: [String])] = [
-            ("What to Do First", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", [
+            ("What to Do First", "https://www.youtube.com/embed/b4ZypVnbYHM?playsinline=1", [
                 "Notify immediate family members",
                 "Locate important documents folder",
                 "Contact family attorney if available",
