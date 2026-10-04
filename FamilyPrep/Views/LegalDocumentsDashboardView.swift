@@ -18,6 +18,19 @@ struct LegalDocumentsDashboardView: View {
         let accent: Color
     }
 
+    private struct HeaderImageDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
+    private let headerImages: [HeaderImageDoc] = [
+        HeaderImageDoc(assetName: "legal_1",
+                       displayTitle: "Family photograph",
+                       accent: .blue)
+    ]
+
     private let wills: [WillDoc] = [
         WillDoc(assetName: "Will Style A - Mrs Brenda Mary Pound (Master)",
                 displayTitle: "Will – Mrs Brenda Mary Pound",
@@ -52,9 +65,11 @@ struct LegalDocumentsDashboardView: View {
 
     @State private var selectedHouseDeed: HouseDeedDoc?
     @State private var selectedWill: WillDoc?
+    @State private var selectedHeaderImage: HeaderImageDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
+            photosSection
             willsSection
             houseDeedsSection
             songSection
@@ -69,6 +84,62 @@ struct LegalDocumentsDashboardView: View {
         .sheet(item: $selectedWill) { doc in
             fullscreenWillViewer(for: doc)
         }
+        .sheet(item: $selectedHeaderImage) { doc in
+            fullscreenHeaderImageViewer(for: doc)
+        }
+    }
+
+    // MARK: - Photos Section
+
+    private var photosSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Photos",
+                          systemImage: "photo.stack.fill",
+                          tint: .blue)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(headerImages) { doc in
+                        photoThumbnail(doc)
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private func photoThumbnail(_ doc: HeaderImageDoc) -> some View {
+        Button(action: {
+            selectedHeaderImage = doc
+        }) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(doc.assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 135)
+                    .clipped()
+                    .cornerRadius(11)
+                    .contentShape(Rectangle())
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(doc.accent.opacity(0.35), lineWidth: 0.8)
+                    )
+
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 21, height: 21)
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(doc.accent)
+                }
+                .padding(8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Wills Section
@@ -81,7 +152,7 @@ struct LegalDocumentsDashboardView: View {
 
             cardBackground {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Thorntons hold the master document. There will be paper copiesO in the bureau, in the sitting room.  Both of you are the executors")
+                    Text("Thorntons hold the master document. There will be paper copies in the bureau, in the sitting room.  Both of you are the executors")
                         .font(.body)
 
                     Divider()
@@ -467,6 +538,49 @@ struct LegalDocumentsDashboardView: View {
                     .toolbarBackground(.hidden, for: .navigationBar)
                 }
             )
+        }
+    }
+
+    private func fullscreenHeaderImageViewer(for doc: HeaderImageDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedHeaderImage = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
+                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 

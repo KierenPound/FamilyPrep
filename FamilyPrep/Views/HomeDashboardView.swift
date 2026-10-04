@@ -28,16 +28,19 @@ struct HomeDashboardView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                if repository.isLoading {
-                    ProgressView("Loading sections...")
-                } else if repository.sections.isEmpty {
-                    ContentUnavailableView(
-                        "No Sections Yet",
-                        systemImage: "list.dash",
-                        description: Text("Tap + to add your first section.")
-                    )
-                } else {
-                    sectionsList
+                PastelEditorialCanvas()
+                ZStack {
+                    if repository.isLoading {
+                        ProgressView("Loading sections...")
+                    } else if repository.sections.isEmpty {
+                        ContentUnavailableView(
+                            "No Sections Yet",
+                            systemImage: "list.dash",
+                            description: Text("Tap + to add your first section.")
+                        )
+                    } else {
+                        sectionsList
+                    }
                 }
             }
             .navigationTitle("Family Prep")
@@ -88,7 +91,6 @@ struct HomeDashboardView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemGroupedBackground))
         .refreshable {
             try? await repository.loadSections()
         }

@@ -3,12 +3,25 @@ import WebKit
 
 struct WhatToDoFirstDashboardView: View {
 
+    private struct WtdfPhotoDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
     private struct CertificateDoc: Identifiable, Hashable {
         let id = UUID()
         let assetName: String
         let displayTitle: String
         let accent: Color
     }
+
+    private let wtdfPhotos: [WtdfPhotoDoc] = [
+        WtdfPhotoDoc(assetName: "wtdl_1",
+                     displayTitle: "Family photograph",
+                     accent: .red)
+    ]
 
     private let certificates: [CertificateDoc] = [
         CertificateDoc(assetName: "Kieren_birth_certificate",
@@ -25,10 +38,12 @@ struct WhatToDoFirstDashboardView: View {
                        accent: .teal)
     ]
 
+    @State private var selectedWtdfPhoto: WtdfPhotoDoc?
     @State private var selectedCertificate: CertificateDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
+            photosSection
             introSection
             medicalCertificateSection
             deathCertificateSection
@@ -43,9 +58,65 @@ struct WhatToDoFirstDashboardView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
         .padding(.bottom, 4)
+        .sheet(item: $selectedWtdfPhoto) { doc in
+            fullscreenWtdfPhotoViewer(for: doc)
+        }
         .sheet(item: $selectedCertificate) { doc in
             fullscreenCertificateViewer(for: doc)
         }
+    }
+
+    // MARK: - Photos Section
+
+    private var photosSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Photos",
+                          systemImage: "photo.stack.fill",
+                          tint: .blue)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(wtdfPhotos) { doc in
+                        photoThumbnail(doc)
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private func photoThumbnail(_ doc: WtdfPhotoDoc) -> some View {
+        Button(action: {
+            selectedWtdfPhoto = doc
+        }) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(doc.assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 135)
+                    .clipped()
+                    .cornerRadius(11)
+                    .contentShape(Rectangle())
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(doc.accent.opacity(0.35), lineWidth: 0.8)
+                    )
+
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 21, height: 21)
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(doc.accent)
+                }
+                .padding(8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Intro
@@ -274,6 +345,51 @@ struct WhatToDoFirstDashboardView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+    }
+
+    private func fullscreenWtdfPhotoViewer(for doc: WtdfPhotoDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedWtdfPhoto = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
+                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
+        }
     }
 
     private func fullscreenCertificateViewer(for doc: CertificateDoc) -> some View {

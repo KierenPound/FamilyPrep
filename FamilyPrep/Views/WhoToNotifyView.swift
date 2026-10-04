@@ -3,10 +3,26 @@ import WebKit
 
 struct WhoToNotifyView: View {
 
+    private struct WtnPhotoDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
+    private let wtnPhotos: [WtnPhotoDoc] = [
+        WtnPhotoDoc(assetName: "who_to_notify_1",
+                    displayTitle: "Family photograph",
+                    accent: .purple)
+    ]
+
     private let entries: [NotificationEntry] = WhoToNotifySeed.allEntries
+
+    @State private var selectedWtnPhoto: WtnPhotoDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            photosSection
             introCalloutSection
 
             ForEach(entries) { entry in
@@ -18,6 +34,62 @@ struct WhoToNotifyView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
         .padding(.bottom, 4)
+        .sheet(item: $selectedWtnPhoto) { doc in
+            fullscreenWtnPhotoViewer(for: doc)
+        }
+    }
+
+    // MARK: - Photos Section
+
+    private var photosSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Photos",
+                          systemImage: "photo.stack.fill",
+                          tint: .blue)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(wtnPhotos) { doc in
+                        photoThumbnail(doc)
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private func photoThumbnail(_ doc: WtnPhotoDoc) -> some View {
+        Button(action: {
+            selectedWtnPhoto = doc
+        }) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(doc.assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 135)
+                    .clipped()
+                    .cornerRadius(11)
+                    .contentShape(Rectangle())
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(doc.accent.opacity(0.35), lineWidth: 0.8)
+                    )
+
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 21, height: 21)
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(doc.accent)
+                }
+                .padding(8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Intro Callout
@@ -294,6 +366,51 @@ struct WhoToNotifyView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color(.separator), lineWidth: 0.5)
             )
+    }
+
+    private func fullscreenWtnPhotoViewer(for doc: WtnPhotoDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedWtnPhoto = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
+                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
+        }
     }
 
     // MARK: - Phone helpers
