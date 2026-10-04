@@ -11,6 +11,17 @@ struct LegalDocumentsDashboardView: View {
         let accent: Color
     }
 
+    private struct HeaderImageDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+    }
+
+    private let headerImages: [HeaderImageDoc] = [
+        HeaderImageDoc(assetName: "legal_1", displayTitle: "Legal Documents – Cover 1"),
+        HeaderImageDoc(assetName: "legal_2", displayTitle: "Legal Documents – Cover 2")
+    ]
+
     private let houseDeeds: [HouseDeedDoc] = [
         HouseDeedDoc(assetName: "PTH11996 - Title sheet",
                      displayTitle: "PTH11996 – Title sheet",
@@ -35,10 +46,12 @@ struct LegalDocumentsDashboardView: View {
     ]
 
     @State private var selectedHouseDeed: HouseDeedDoc?
+    @State private var selectedHeaderImage: HeaderImageDoc?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
+                headerThumbnailSection
                 houseDeedsSection
                 songSection
             }
@@ -47,6 +60,43 @@ struct LegalDocumentsDashboardView: View {
         }
         .sheet(item: $selectedHouseDeed) { doc in
             fullscreenHouseDeedViewer(for: doc)
+        }
+        .sheet(item: $selectedHeaderImage) { doc in
+            fullscreenHeaderImageViewer(for: doc)
+        }
+    }
+
+    // MARK: - Header Thumbnails
+
+    private var headerThumbnailSection: some View {
+        HStack(spacing: 14) {
+            ForEach(headerImages) { doc in
+                Button(action: { selectedHeaderImage = doc }) {
+                    Image(doc.assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 120)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color(.separator).opacity(0.4), lineWidth: 0.5)
+                        )
+                        .overlay(alignment: .topTrailing) {
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 24, height: 24)
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                            .padding(8)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -114,31 +164,31 @@ struct LegalDocumentsDashboardView: View {
                     Image(doc.assetName)
                         .resizable()
                         .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 140)
+                        .frame(height: 70)
                         .frame(maxWidth: .infinity)
                         .clipped()
-                        .cornerRadius(12)
+                        .cornerRadius(8)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.5)
                         )
 
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .frame(width: 26, height: 26)
+                            .frame(width: 20, height: 20)
                         Image(systemName: "doc.text.magnifyingglass")
-                            .font(.caption.weight(.semibold))
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(doc.accent)
                     }
-                    .padding(10)
+                    .padding(6)
                 }
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -147,10 +197,10 @@ struct LegalDocumentsDashboardView: View {
 
                     HStack(spacing: 4) {
                         Image(systemName: "doc.richtext.fill")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                         Text("Tap to open PDF")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -207,7 +257,48 @@ struct LegalDocumentsDashboardView: View {
                             .padding(.horizontal, 12)
                             .background(
                                 Capsule().fill(.white.opacity(0.12))
-                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+        }
+    }
+
+    private func fullscreenHeaderImageViewer(for doc: HeaderImageDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedHeaderImage = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
                     }
                 }
             }

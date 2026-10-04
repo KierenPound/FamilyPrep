@@ -41,9 +41,6 @@ struct SectionDetailView: View {
 
     private var richMediaDashboardSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Reference Dashboard", systemImage: "display.2")
-                .font(.title3.bold())
-                .foregroundStyle(.primary)
 
             if section.title == "Legal Documents" {
                 LegalDocumentsDashboardView()
