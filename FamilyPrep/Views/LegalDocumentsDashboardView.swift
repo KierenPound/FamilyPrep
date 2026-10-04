@@ -257,6 +257,7 @@ struct LegalDocumentsDashboardView: View {
                             .padding(.horizontal, 12)
                             .background(
                                 Capsule().fill(.white.opacity(0.12))
+                            )
                     }
                 }
             }
@@ -299,6 +300,7 @@ struct LegalDocumentsDashboardView: View {
                             .padding(.horizontal, 12)
                             .background(
                                 Capsule().fill(.white.opacity(0.12))
+                            )
                     }
                 }
             }
