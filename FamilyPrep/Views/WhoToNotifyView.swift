@@ -6,19 +6,18 @@ struct WhoToNotifyView: View {
     private let entries: [NotificationEntry] = WhoToNotifySeed.allEntries
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                introCalloutSection
+        VStack(alignment: .leading, spacing: 24) {
+            introCalloutSection
 
-                ForEach(entries) { entry in
-                    organisationCard(entry)
-                }
-
-                songForThePageSection
+            ForEach(entries) { entry in
+                organisationCard(entry)
             }
-            .padding(.top, 4)
-            .padding(.bottom, 4)
+
+            songForThePageSection
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Intro Callout

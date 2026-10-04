@@ -28,22 +28,21 @@ struct WhatToDoFirstDashboardView: View {
     @State private var selectedCertificate: CertificateDoc?
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 28) {
-                introSection
-                medicalCertificateSection
-                deathCertificateSection
-                dadDetailsSection
-                mumDetailsSection
-                requiredDocumentsSection
-                registrarOutcomeSection
-                tellUsOnceSection
-                songSection
-                driveFolderSection
-            }
-            .padding(.top, 4)
-            .padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: 28) {
+            introSection
+            medicalCertificateSection
+            deathCertificateSection
+            dadDetailsSection
+            mumDetailsSection
+            requiredDocumentsSection
+            registrarOutcomeSection
+            tellUsOnceSection
+            songSection
+            driveFolderSection
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
         .sheet(item: $selectedCertificate) { doc in
             fullscreenCertificateViewer(for: doc)
         }

@@ -25,10 +25,13 @@ struct SectionDetailView: View {
                 attachmentsSection
                 footerSection
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 28)
             .padding(.bottom, 32)
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .contentMargins(.top, 8, for: .scrollContent)
+        .contentMargins(.horizontal, 8, for: .scrollContent)
+        .navigationTitle(section.title)
+        .navigationBarTitleDisplayMode(.large)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .onAppear {
             editingYouTubeURL = section.youtubeURL
@@ -50,6 +53,7 @@ struct SectionDetailView: View {
                 WhatToDoFirstDashboardView()
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -63,9 +67,6 @@ struct SectionDetailView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(section.title)
-                .font(.largeTitle).bold()
-                .foregroundStyle(.primary)
             HStack(spacing: 10) {
                 Label("\(section.checklistItems.filter { $0.isCompleted }.count)/\(section.checklistItems.count)",
                       systemImage: "checklist")
@@ -80,8 +81,10 @@ struct SectionDetailView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
         }
-        .padding(.top, 12)
+        .padding(.top, 4)
+        .padding(.horizontal, 8)
     }
 
     private var notesSection: some View {
@@ -211,6 +214,7 @@ struct SectionDetailView: View {
                 .padding(.horizontal, 6)
             }
         }
+        .padding(.horizontal, 8)
     }
 
     private var completedCount: Int {
@@ -235,6 +239,7 @@ struct SectionDetailView: View {
                       : "circle")
                     .font(.title2)
                     .foregroundStyle(item.isCompleted ? .green : .secondary)
+                    .frame(width: 28, height: 28, alignment: .center)
             }
             .buttonStyle(.plain)
 

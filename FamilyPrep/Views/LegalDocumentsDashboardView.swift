@@ -66,17 +66,15 @@ struct LegalDocumentsDashboardView: View {
     @State private var selectedWill: WillDoc?
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 28) {
-                headerThumbnailSection
-                willsSection
-                houseDeedsSection
-                songSection
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
+        VStack(alignment: .leading, spacing: 28) {
+            headerThumbnailSection
+            willsSection
+            houseDeedsSection
+            songSection
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
         .sheet(item: $selectedHouseDeed) { doc in
             fullscreenHouseDeedViewer(for: doc)
         }
@@ -91,33 +89,42 @@ struct LegalDocumentsDashboardView: View {
     // MARK: - Header Thumbnails
 
     private var headerThumbnailSection: some View {
-        HStack(spacing: 14) {
-            ForEach(headerImages) { doc in
-                Button(action: { selectedHeaderImage = doc }) {
-                    Image(doc.assetName)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 90)
-                        .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color(.separator).opacity(0.4), lineWidth: 0.5)
-                        )
-                        .overlay(alignment: .topTrailing) {
-                            ZStack {
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                            }
-                            .padding(8)
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Document covers",
+                          systemImage: "photo.stack.fill",
+                          tint: .blue)
+
+            cardBackground {
+                HStack(spacing: 14) {
+                    ForEach(headerImages) { doc in
+                        Button(action: { selectedHeaderImage = doc }) {
+                            Image(doc.assetName)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(minWidth: 0, maxWidth: .infinity)
+                                .frame(height: 120)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(Color(.separator).opacity(0.4), lineWidth: 0.5)
+                                )
+                                .overlay(alignment: .topTrailing) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(.ultraThinMaterial)
+                                            .frame(width: 24, height: 24)
+                                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                    }
+                                    .padding(8)
+                                }
                         }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(16)
             }
         }
     }
@@ -142,7 +149,7 @@ struct LegalDocumentsDashboardView: View {
                         }
                     }
                 }
-                .padding(14)
+                .padding(16)
             }
         }
     }
@@ -227,7 +234,7 @@ struct LegalDocumentsDashboardView: View {
                                 .stroke(Color(.separator), lineWidth: 0.5)
                         )
                 }
-                .padding(14)
+                .padding(16)
             }
         }
     }
@@ -252,7 +259,7 @@ struct LegalDocumentsDashboardView: View {
                         }
                     }
                 }
-                .padding(14)
+                .padding(16)
             }
         }
     }
@@ -264,31 +271,31 @@ struct LegalDocumentsDashboardView: View {
                     Image(doc.assetName)
                         .resizable()
                         .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 70)
+                        .frame(height: 140)
                         .frame(maxWidth: .infinity)
                         .clipped()
-                        .cornerRadius(8)
+                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 1.2)
                         )
 
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .frame(width: 20, height: 20)
+                            .frame(width: 26, height: 26)
                         Image(systemName: "doc.text.magnifyingglass")
-                            .font(.caption2.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(doc.accent)
                     }
-                    .padding(6)
+                    .padding(10)
                 }
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -297,10 +304,10 @@ struct LegalDocumentsDashboardView: View {
 
                     HStack(spacing: 4) {
                         Image(systemName: "doc.richtext.fill")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                         Text("Tap to open PDF")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
