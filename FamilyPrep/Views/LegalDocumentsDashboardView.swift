@@ -17,9 +17,25 @@ struct LegalDocumentsDashboardView: View {
         let displayTitle: String
     }
 
+    private struct WillDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
     private let headerImages: [HeaderImageDoc] = [
         HeaderImageDoc(assetName: "legal_1", displayTitle: "Legal Documents – Cover 1"),
         HeaderImageDoc(assetName: "legal_2", displayTitle: "Legal Documents – Cover 2")
+    ]
+
+    private let wills: [WillDoc] = [
+        WillDoc(assetName: "Will Style A - Mrs Brenda Mary Pound (Master)",
+                displayTitle: "Will – Mrs Brenda Mary Pound",
+                accent: .purple),
+        WillDoc(assetName: "Will Style A - Mr Kieren Matthew Pound (Master)",
+                displayTitle: "Will – Mr Kieren Matthew Pound",
+                accent: .indigo)
     ]
 
     private let houseDeeds: [HouseDeedDoc] = [
@@ -47,22 +63,28 @@ struct LegalDocumentsDashboardView: View {
 
     @State private var selectedHouseDeed: HouseDeedDoc?
     @State private var selectedHeaderImage: HeaderImageDoc?
+    @State private var selectedWill: WillDoc?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
                 headerThumbnailSection
+                willsSection
                 houseDeedsSection
                 songSection
             }
+            .padding(.horizontal, 16)
             .padding(.top, 4)
-            .padding(.bottom, 4)
+            .padding(.bottom, 24)
         }
         .sheet(item: $selectedHouseDeed) { doc in
             fullscreenHouseDeedViewer(for: doc)
         }
         .sheet(item: $selectedHeaderImage) { doc in
             fullscreenHeaderImageViewer(for: doc)
+        }
+        .sheet(item: $selectedWill) { doc in
+            fullscreenWillViewer(for: doc)
         }
     }
 
@@ -76,7 +98,7 @@ struct LegalDocumentsDashboardView: View {
                         .resizable()
                         .scaledToFill()
                         .frame(maxWidth: .infinity)
-                        .frame(height: 120)
+                        .frame(height: 90)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(
@@ -98,6 +120,84 @@ struct LegalDocumentsDashboardView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: - Wills Section
+
+    private var willsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Wills",
+                          systemImage: "signature",
+                          tint: .purple)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Thorntons will have a physical copy.  There will also be a paper copy in the bureau, in the sitting room.  Both of you are the executors")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(wills) { doc in
+                            willThumbnail(doc)
+                        }
+                    }
+                }
+                .padding(14)
+            }
+        }
+    }
+
+    private func willThumbnail(_ doc: WillDoc) -> some View {
+        Button(action: { selectedWill = doc }) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    Image(doc.assetName)
+                        .resizable()
+                        .aspectRatio(1.33, contentMode: .fill)
+                        .frame(height: 140)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.5)
+                        )
+
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 26, height: 26)
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(doc.accent)
+                    }
+                    .padding(10)
+                }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(doc.displayTitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.richtext.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Tap to open PDF")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Song Section (YouTube)
@@ -305,6 +405,66 @@ struct LegalDocumentsDashboardView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+        }
+    }
+
+    private func fullscreenWillViewer(for doc: WillDoc) -> some View {
+        if let pdfURL = Bundle.main.url(forResource: doc.assetName, withExtension: "pdf") {
+            AnyView(
+                PDFKitViewerSheet(url: pdfURL,
+                                  title: doc.displayTitle,
+                                  onClose: { selectedWill = nil })
+            )
+        } else if let fallbackURL = HouseDeedPDFLoader.url(forAssetNamed: doc.assetName) {
+            AnyView(
+                PDFKitViewerSheet(url: fallbackURL,
+                                  title: doc.displayTitle,
+                                  onClose: { selectedWill = nil })
+            )
+        } else {
+            AnyView(
+                NavigationStack {
+                    GeometryReader { geo in
+                        ZStack(alignment: .top) {
+                            Color.black.ignoresSafeArea()
+
+                            ScrollView([.vertical, .horizontal]) {
+                                Image(doc.assetName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: geo.size.width - 32,
+                                           maxHeight: geo.size.height - 32)
+                                    .padding(16)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Text(doc.displayTitle)
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                selectedWill = nil
+                            } label: {
+                                Label("Close", systemImage: "xmark.circle.fill")
+                                    .font(.headline)
+                                    .labelStyle(.titleAndIcon)
+                                    .foregroundStyle(.white)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 12)
+                                    .background(
+                                        Capsule().fill(.white.opacity(0.12))
+                                    )
+                            }
+                        }
+                    }
+                    .toolbarBackground(.hidden, for: .navigationBar)
+                }
+            )
         }
     }
 
