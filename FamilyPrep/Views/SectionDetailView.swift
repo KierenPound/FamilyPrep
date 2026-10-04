@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct SectionDetailView: View {
     @EnvironmentObject private var repository: LocalDataRepository
     let section: PrepSection
@@ -365,12 +366,18 @@ struct SectionDetailView: View {
 }
 
 #Preview {
-    let repo = LocalDataRepository()
-    let sample = PrepSection(title: "Sample Section", orderIndex: 0, isStandard: true, notes: "Sample notes content here with multiple lines to show the editor.", youtubeURL: "")
-    sample.checklistItems.append(ChecklistItem(text: "Do this thing", isCompleted: true, orderIndex: 0))
-    sample.checklistItems.append(ChecklistItem(text: "Then do this other very important step that is long", isCompleted: false, orderIndex: 1))
-    return NavigationStack {
-        SectionDetailView(section: sample)
-            .environmentObject(repo)
+    final class PreviewBox: @unchecked Sendable {
+        @MainActor
+        static func make() -> some View {
+            let repo = LocalDataRepository()
+            let sample = PrepSection(title: "Sample Section", orderIndex: 0, isStandard: true, notes: "Sample notes content here with multiple lines to show the editor.", youtubeURL: "")
+            sample.checklistItems.append(ChecklistItem(text: "Do this thing", isCompleted: true, orderIndex: 0))
+            sample.checklistItems.append(ChecklistItem(text: "Then do this other very important step that is long", isCompleted: false, orderIndex: 1))
+            return NavigationStack {
+                SectionDetailView(section: sample)
+                    .environmentObject(repo)
+            }
+        }
     }
+    return PreviewBox.make()
 }

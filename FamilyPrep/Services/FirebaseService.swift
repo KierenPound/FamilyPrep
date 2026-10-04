@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseStorage
 
+@MainActor
 final class FirebaseService {
     static let shared = FirebaseService()
 
@@ -72,7 +73,7 @@ final class FirebaseService {
         #endif
     }
 
-    func observeSections(handler: @escaping ([PrepSection]) -> Void) {
+    func observeSections(handler: @escaping @Sendable ([PrepSection]) -> Void) {
         guard firestoreEnabled else { return }
         #if canImport(FirebaseFirestore)
         let db = Firestore.firestore()
@@ -117,7 +118,7 @@ final class FirebaseService {
                     }
                     return section
                 }
-                handler(sections)
+                Task { @MainActor in handler(sections) }
             }
         #endif
     }
