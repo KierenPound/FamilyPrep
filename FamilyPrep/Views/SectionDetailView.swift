@@ -15,7 +15,7 @@ struct SectionDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 headerSection
-                if section.title == "What to Do First" || section.title == "Legal Documents" {
+                if section.title == "What to Do First" || section.title == "Legal Documents" || section.title == "Who to Notify" {
                     richMediaDashboardSection
                 }
                 notesSection
@@ -46,6 +46,8 @@ struct SectionDetailView: View {
 
             if section.title == "Legal Documents" {
                 LegalDocumentsDashboardView()
+            } else if section.title == "Who to Notify" {
+                WhoToNotifyView()
             } else {
                 WhatToDoFirstDashboardView()
             }

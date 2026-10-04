@@ -73,15 +73,19 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
                 "Trust documents",
                 "Property deeds and titles"
             ]),
-            ("Who to Notify", "", [
-                "Immediate family (spouse, children, siblings, parents)",
-                "Extended family members",
-                "Close friends",
-                "Employer and work colleagues",
-                "Family doctor and medical providers",
-                "Insurance companies",
-                "Banks and financial institutions",
-                "Attorney and accountant"
+            ("Who to Notify", "https://youtu.be/tuyBCSYTs5A", [
+                "Submit batch notification via Life Ledger portal",
+                "Contact TSB — Main + Kieren Retirement + House Funds + Savings accounts",
+                "Contact Starling Bank — Kieren and Bren accounts",
+                "Notify Tembo (ISAs) via their bereavement guide",
+                "Claim NS&I Premium Bonds (Holder Number 30905977E)",
+                "Notify West Midlands Pension Authority (Mum's Pension)",
+                "Call @SIPP on 0141 204 7950 re: Monkton building",
+                "Notify Lifesight / Willis Towers Watson (Dad's Pension)",
+                "Cancel or transfer Octopus Energy (both properties)",
+                "Cancel Sky broadband, TV, stream and mobile (both addresses)",
+                "Cancel direct-debit digital subscriptions",
+                "Secure and log in to all Mac computers (password: birth town)"
             ]),
             ("Running the Houses", "", [
                 "Mortgage or rent payments",
