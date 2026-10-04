@@ -249,6 +249,7 @@ struct WhoToNotifyView: View {
 
                     Color.black
                         .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 200)
                         .aspectRatio(16/9, contentMode: .fit)
                         .cornerRadius(14)
                         .overlay {
@@ -260,7 +261,7 @@ struct WhoToNotifyView: View {
                                 .stroke(Color(.separator), lineWidth: 0.5)
                         )
                 }
-                .padding(14)
+                .padding(16)
             }
         }
     }

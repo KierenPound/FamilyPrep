@@ -25,11 +25,11 @@ struct SectionDetailView: View {
                 attachmentsSection
                 footerSection
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 8)
             .padding(.bottom, 32)
         }
         .contentMargins(.top, 8, for: .scrollContent)
-        .contentMargins(.horizontal, 8, for: .scrollContent)
+        .contentMargins(.horizontal, 36, for: .scrollContent)
         .navigationTitle(section.title)
         .navigationBarTitleDisplayMode(.large)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
@@ -53,11 +53,10 @@ struct SectionDetailView: View {
                 WhatToDoFirstDashboardView()
             }
         }
-        .fixedSize(horizontal: false, vertical: true)
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(.systemGroupedBackground))
+                .fill(Color(.secondarySystemGroupedBackground))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -81,10 +80,8 @@ struct SectionDetailView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
         }
         .padding(.top, 4)
-        .padding(.horizontal, 8)
     }
 
     private var notesSection: some View {
@@ -151,6 +148,7 @@ struct SectionDetailView: View {
                 }
             }
             .padding(12)
+            .padding(.leading, 6)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
@@ -171,15 +169,21 @@ struct SectionDetailView: View {
 
             Color.black
                 .frame(maxWidth: .infinity)
+                .frame(maxHeight: 200)
                 .aspectRatio(16/9, contentMode: .fit)
                 .cornerRadius(14)
+                .clipped()
+                .padding(.horizontal, 10)
                 .overlay {
                     YouTubePlayerView(videoID: videoID)
                         .cornerRadius(14)
+                        .padding(.horizontal, 10)
+                        .clipped()
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(Color(.separator), lineWidth: 0.5)
+                        .padding(.horizontal, 10)
                 )
         }
     }
@@ -194,10 +198,12 @@ struct SectionDetailView: View {
                     .font(.caption).monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            .padding(.leading, 6)
 
             VStack(spacing: 8) {
                 ForEach(section.checklistItems.sorted(by: { $0.orderIndex < $1.orderIndex })) { item in
                     checklistRow(for: item)
+                        .padding(.leading, 8)
                 }
 
                 HStack(spacing: 10) {
@@ -211,10 +217,9 @@ struct SectionDetailView: View {
                     }
                     .disabled(newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .padding(.horizontal, 6)
+                .padding(.leading, 8)
             }
         }
-        .padding(.horizontal, 8)
     }
 
     private var completedCount: Int {
@@ -240,8 +245,10 @@ struct SectionDetailView: View {
                     .font(.title2)
                     .foregroundStyle(item.isCompleted ? .green : .secondary)
                     .frame(width: 28, height: 28, alignment: .center)
+                    .padding(.leading, 4)
             }
             .buttonStyle(.plain)
+            .frame(minWidth: 36, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 TextField("Item", text: Binding(
@@ -258,6 +265,7 @@ struct SectionDetailView: View {
                         throttleSaveSection()
                     }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Menu {
                 Button(role: .destructive, action: {
@@ -282,6 +290,7 @@ struct SectionDetailView: View {
                     .foregroundStyle(.secondary)
             }
             .menuStyle(.borderlessButton)
+            .frame(minWidth: 30, alignment: .trailing)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -296,6 +305,7 @@ struct SectionDetailView: View {
             }
         }
         .padding(12)
+        .padding(.leading, 4)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))

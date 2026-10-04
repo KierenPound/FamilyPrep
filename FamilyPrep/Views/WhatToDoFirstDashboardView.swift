@@ -150,8 +150,8 @@ struct WhatToDoFirstDashboardView: View {
                     ("Date and place of birth", "05 Jan 1968 · Guildford, Surrey, England"),
                     ("Date and place of death", "Unfortunately I can't fill this in for you!  Over to you"),
                     ("Last known address", "Rowanbank, Thimblerow, Dunning, PH2 0RT"),
-                    ("Occupation", ""),
-                    ("Marital status", ""),
+                    ("Occupation", "Retired"),
+                    ("Marital status", "Married"),
                     ("Spouse or partner's details", "Brenda Mary Pound, retired"),
                     ("Parents' full names", "Brian Ronald Pound / Isobel Mary Underwood"),
                     ("GP details", "St Margaret's Health Centre, St Margaret's Drive, Auchterarder, PH3 1JH")
@@ -175,8 +175,8 @@ struct WhatToDoFirstDashboardView: View {
                     ("Date and place of birth", "21 Jul 1957 · Perry Barr, Birmingham, England"),
                     ("Date and place of death", "Unfortunately I can't fill this in for you!  Over to you"),
                     ("Last known address", "Rowanbank, Thimblerow, Dunning, PH2 0RT"),
-                    ("Occupation", ""),
-                    ("Marital status", ""),
+                    ("Occupation", "Retired"),
+                    ("Marital status", "Married"),
                     ("Spouse or partner's details", "Kieren Matthew Pound, retired"),
                     ("Parents' full names", "John Potts / Evelyn Potts (nee Jinks)"),
                     ("GP details", "St Margaret's Health Centre, St Margaret's Drive, Auchterarder, PH3 1JH")
@@ -224,51 +224,51 @@ struct WhatToDoFirstDashboardView: View {
         Button(action: {
             selectedCertificate = doc
         }) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottomTrailing) {
                     Image(doc.assetName)
                         .resizable()
                         .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 140)
+                        .frame(height: 70)
                         .frame(maxWidth: .infinity)
                         .clipped()
-                        .cornerRadius(12)
+                        .cornerRadius(8)
                         .contentShape(Rectangle())
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 1.2)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.6)
                         )
 
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 22, height: 22)
                         Image(systemName: "arrow.up.backward.and.arrow.down.forward")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(doc.accent)
                     }
-                    .padding(8)
+                    .padding(6)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Image(systemName: "doc.viewfinder")
-                            .font(.caption2)
+                            .font(.system(size: 10))
                         Text("Tap to expand")
-                            .font(.caption2)
+                            .font(.system(size: 10))
                     }
                     .foregroundStyle(doc.accent)
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -435,6 +435,7 @@ struct WhatToDoFirstDashboardView: View {
 
                     Color.black
                         .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 200)
                         .aspectRatio(16/9, contentMode: .fit)
                         .cornerRadius(14)
                         .overlay {
@@ -446,7 +447,7 @@ struct WhatToDoFirstDashboardView: View {
                                 .stroke(Color(.separator), lineWidth: 0.5)
                         )
                 }
-                .padding(14)
+                .padding(16)
             }
         }
     }
@@ -530,11 +531,10 @@ struct WhatToDoFirstDashboardView: View {
         cardBackground {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                    HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(row.label)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(accent)
-                            .frame(width: 160, alignment: .leading)
 
                         if row.value.isEmpty {
                             Text("—")

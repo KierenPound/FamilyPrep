@@ -11,23 +11,12 @@ struct LegalDocumentsDashboardView: View {
         let accent: Color
     }
 
-    private struct HeaderImageDoc: Identifiable, Hashable {
-        let id = UUID()
-        let assetName: String
-        let displayTitle: String
-    }
-
     private struct WillDoc: Identifiable, Hashable {
         let id = UUID()
         let assetName: String
         let displayTitle: String
         let accent: Color
     }
-
-    private let headerImages: [HeaderImageDoc] = [
-        HeaderImageDoc(assetName: "legal_1", displayTitle: "Legal Documents – Cover 1"),
-        HeaderImageDoc(assetName: "legal_2", displayTitle: "Legal Documents – Cover 2")
-    ]
 
     private let wills: [WillDoc] = [
         WillDoc(assetName: "Will Style A - Mrs Brenda Mary Pound (Master)",
@@ -57,20 +46,19 @@ struct LegalDocumentsDashboardView: View {
     ]
 
     private let twoColumnGrid = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14)
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
     ]
 
     @State private var selectedHouseDeed: HouseDeedDoc?
-    @State private var selectedHeaderImage: HeaderImageDoc?
     @State private var selectedWill: WillDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
-            headerThumbnailSection
             willsSection
             houseDeedsSection
             songSection
+            driveFolderSection
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
@@ -78,54 +66,8 @@ struct LegalDocumentsDashboardView: View {
         .sheet(item: $selectedHouseDeed) { doc in
             fullscreenHouseDeedViewer(for: doc)
         }
-        .sheet(item: $selectedHeaderImage) { doc in
-            fullscreenHeaderImageViewer(for: doc)
-        }
         .sheet(item: $selectedWill) { doc in
             fullscreenWillViewer(for: doc)
-        }
-    }
-
-    // MARK: - Header Thumbnails
-
-    private var headerThumbnailSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionHeader(title: "Document covers",
-                          systemImage: "photo.stack.fill",
-                          tint: .blue)
-
-            cardBackground {
-                HStack(spacing: 14) {
-                    ForEach(headerImages) { doc in
-                        Button(action: { selectedHeaderImage = doc }) {
-                            Image(doc.assetName)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(minWidth: 0, maxWidth: .infinity)
-                                .frame(height: 120)
-                                .clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(Color(.separator).opacity(0.4), lineWidth: 0.5)
-                                )
-                                .overlay(alignment: .topTrailing) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(.ultraThinMaterial)
-                                            .frame(width: 24, height: 24)
-                                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.primary)
-                                    }
-                                    .padding(8)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(16)
-            }
         }
     }
 
@@ -138,14 +80,46 @@ struct LegalDocumentsDashboardView: View {
                           tint: .purple)
 
             cardBackground {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Thorntons will have a physical copy.  There will also be a paper copy in the bureau, in the sitting room.  Both of you are the executors")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Thorntons hold the master document. There will be paper copiesO in the bureau, in the sitting room.  Both of you are the executors")
+                        .font(.body)
 
-                    HStack(alignment: .top, spacing: 14) {
-                        ForEach(wills) { doc in
-                            willThumbnail(doc)
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Contact Thorntons", systemImage: "building.columns.fill")
+                            .font(.headline)
+                            .foregroundStyle(.tint)
+
+                        HStack(spacing: 10) {
+                            phoneButton(phone: "01738231178",
+                                        display: "01738 231178",
+                                        systemImage: "phone.fill")
+
+                            emailButton(email: "AHoggan@thorntons-law.co.uk",
+                                         systemImage: "envelope.fill")
+                        }
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Will documents", systemImage: "doc.richtext.fill")
+                            .font(.headline)
+                            .foregroundStyle(.tint)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "lightbulb.fill")
+                                .foregroundStyle(.yellow)
+                            Text("Tap any card below to open and read the full Will PDF.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(wills) { doc in
+                                willThumbnail(doc)
+                            }
                         }
                     }
                 }
@@ -155,56 +129,152 @@ struct LegalDocumentsDashboardView: View {
     }
 
     private func willThumbnail(_ doc: WillDoc) -> some View {
-        Button(action: { selectedWill = doc }) {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .topTrailing) {
+        Button(action: {
+            selectedWill = doc
+        }) {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .bottomTrailing) {
                     Image(doc.assetName)
                         .resizable()
                         .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 140)
+                        .frame(height: 70)
                         .frame(maxWidth: .infinity)
                         .clipped()
-                        .cornerRadius(12)
+                        .cornerRadius(8)
+                        .contentShape(Rectangle())
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.6)
                         )
 
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .frame(width: 26, height: 26)
+                            .frame(width: 22, height: 22)
                         Image(systemName: "doc.text.magnifyingglass")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(doc.accent)
                     }
-                    .padding(10)
+                    .padding(6)
                 }
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.richtext.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.viewfinder")
+                            .font(.system(size: 10))
                         Text("Tap to open PDF")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10))
                     }
+                    .foregroundStyle(doc.accent)
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - House Deeds Section
+
+    private var houseDeedsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "House Deeds",
+                          systemImage: "house.and.flag.fill",
+                          tint: .brown)
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Below are the official title sheets and plans from Scotland Land Information Service")
+                        .font(.body)
+
+                    Divider()
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundStyle(.yellow)
+                        Text("Tap any card below to open and read the full Land Registry PDF.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LazyVGrid(
+                        columns: twoColumnGrid,
+                        spacing: 12
+                    ) {
+                        ForEach(houseDeeds) { doc in
+                            houseDeedThumbnail(doc)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private func houseDeedThumbnail(_ doc: HouseDeedDoc) -> some View {
+        Button(action: {
+            selectedHouseDeed = doc
+        }) {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(doc.assetName)
+                        .resizable()
+                        .aspectRatio(1.33, contentMode: .fill)
+                        .frame(height: 70)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .cornerRadius(8)
+                        .contentShape(Rectangle())
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.6)
+                        )
+
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 22, height: 22)
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(doc.accent)
+                    }
+                    .padding(6)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(doc.displayTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.viewfinder")
+                            .font(.system(size: 10))
+                        Text("Tap to open PDF")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(doc.accent)
+                }
+                .padding(.horizontal, 1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Song Section (YouTube)
@@ -223,6 +293,7 @@ struct LegalDocumentsDashboardView: View {
 
                     Color.black
                         .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 200)
                         .aspectRatio(16/9, contentMode: .fit)
                         .cornerRadius(14)
                         .overlay {
@@ -239,84 +310,51 @@ struct LegalDocumentsDashboardView: View {
         }
     }
 
-    // MARK: - House Deeds Section
+    // MARK: - Drive Folder
 
-    private var houseDeedsSection: some View {
+    private var driveFolderSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader(title: "House Deeds",
-                          systemImage: "house.and.flag.fill",
-                          tint: .brown)
+            sectionHeader(title: "Related Files",
+                          systemImage: "folder.fill",
+                          tint: .yellow)
 
-            cardBackground {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Tap any card below to open and read the full Land Registry PDF.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(columns: twoColumnGrid, alignment: .leading, spacing: 14) {
-                        ForEach(houseDeeds) { doc in
-                            houseDeedThumbnail(doc)
-                        }
-                    }
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    private func houseDeedThumbnail(_ doc: HouseDeedDoc) -> some View {
-        Button(action: { selectedHouseDeed = doc }) {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .topTrailing) {
-                    Image(doc.assetName)
-                        .resizable()
-                        .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 140)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 1.2)
-                        )
-
+            Link(destination: URL(string: "https://docs.google.com/folderview?authuser=0&id=1mxq_Dc28Rq76dMY69rhufmXoaJG0f5NU")!) {
+                HStack(spacing: 14) {
                     ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 26, height: 26)
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(doc.accent)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.yellow.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "folder.fill")
+                            .font(.title2)
+                            .foregroundStyle(.yellow)
                     }
-                    .padding(10)
-                }
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(doc.displayTitle)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.richtext.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Tap to open PDF")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Open Google Drive Folder")
+                            .font(.subheadline.weight(.semibold))
+                        Text("docs.google.com – Related documents")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 2)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color(.separator), lineWidth: 0.5)
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(.primary)
         }
-        .buttonStyle(.plain)
     }
+
+    // MARK: - Fullscreen viewers
 
     @ViewBuilder
     private func fullscreenHouseDeedViewer(for doc: HouseDeedDoc) -> some View {
@@ -355,49 +393,6 @@ struct LegalDocumentsDashboardView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         selectedHouseDeed = nil
-                    } label: {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.headline)
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(.white)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule().fill(.white.opacity(0.12))
-                            )
-                    }
-                }
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
-        }
-    }
-
-    private func fullscreenHeaderImageViewer(for doc: HeaderImageDoc) -> some View {
-        NavigationStack {
-            GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    Color.black.ignoresSafeArea()
-
-                    ScrollView([.vertical, .horizontal]) {
-                        Image(doc.assetName)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
-                            .padding(16)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(doc.displayTitle)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        selectedHeaderImage = nil
                     } label: {
                         Label("Close", systemImage: "xmark.circle.fill")
                             .font(.headline)
@@ -504,6 +499,51 @@ struct LegalDocumentsDashboardView: View {
                     .stroke(Color(.separator), lineWidth: 0.5)
             )
     }
+
+    private func phoneButton(phone: String, display: String, systemImage: String) -> some View {
+        Link(destination: URL(string: "tel:\(phone)")!) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                Text(display)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.green.opacity(0.12))
+            )
+            .foregroundStyle(.green)
+            .overlay(
+                Capsule()
+                    .stroke(Color.green.opacity(0.25), lineWidth: 1)
+            )
+        }
+    }
+
+    private func emailButton(email: String, systemImage: String) -> some View {
+        Link(destination: URL(string: "mailto:\(email)")!) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                Text(email)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.blue.opacity(0.12))
+            )
+            .foregroundStyle(.blue)
+            .overlay(
+                Capsule()
+                    .stroke(Color.blue.opacity(0.25), lineWidth: 1)
+            )
+        }
+    }
+
 }
 
 // MARK: - PDFKit Fullscreen Viewer (SwiftUI -> UIKit)
@@ -592,4 +632,13 @@ private enum HouseDeedPDFLoader {
         }
         return nil
     }
+}
+
+#Preview {
+    ScrollView {
+        LegalDocumentsDashboardView()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 24)
+    }
+    .background(Color(.systemGroupedBackground))
 }
