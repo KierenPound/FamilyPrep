@@ -24,11 +24,10 @@ struct SectionDetailView: View {
                     attachmentsSection
                     footerSection
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
                 .padding(.bottom, 32)
             }
-            .contentMargins(.top, 8, for: .scrollContent)
-            .contentMargins(.horizontal, 36, for: .scrollContent)
             .navigationTitle(section.title)
             .navigationBarTitleDisplayMode(.large)
         }

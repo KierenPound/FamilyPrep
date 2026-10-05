@@ -75,22 +75,46 @@ struct HomeDashboardView: View {
     }
 
     private var sectionsList: some View {
-        List {
-            ForEach(repository.sections) { section in
-                NavigationLink(destination: SectionDetailView(section: section)) {
-                    SectionRowView(
-                        section: section,
-                        icon: icon(for: section),
-                        color: color(for: section)
-                    )
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 0) {
+                ForEach(repository.sections) { section in
+                    NavigationLink(destination: SectionDetailView(section: section)) {
+                        SectionRowView(
+                            section: section,
+                            icon: icon(for: section),
+                            color: color(for: section)
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                                .shadow(color: .black.opacity(0.03), radius: 1, y: 1)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive, action: {
+                            if let idx = repository.sections.firstIndex(where: { $0.id == section.id }) {
+                                deleteStandardSections(at: IndexSet(integer: idx))
+                            }
+                        }) {
+                            Label("Delete Section", systemImage: "trash")
+                        }
+                        .disabled(section.isStandard)
+                    }
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                .listRowBackground(Color.clear)
             }
-            .onDelete(perform: deleteStandardSections)
+            .padding(.top, 4)
+            .padding(.bottom, 24)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .refreshable {
             try? await repository.loadSections()
         }

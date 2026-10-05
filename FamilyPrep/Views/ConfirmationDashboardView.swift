@@ -65,9 +65,9 @@ struct ConfirmationDashboardView: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 135)
+                    .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
                     .contentShape(Rectangle())
@@ -168,11 +168,11 @@ struct ConfirmationDashboardView: View {
                             Text("The Original Document")
                                 .font(.headline)
 
-                            Text("A photocopy is useless for the court.  The physical paper original must be kept safe.  It is located:")
+                            Text("A photocopy is useless for the court.  The physical paper original must be kept safe.  It is located in the bureau")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
-                            Text("[Insert exactly where it is hidden in your house, e.g., in the study safe / filing cabinet]")
+                            Text("[The master  copy is held securely at Thorntons]")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .padding(10)

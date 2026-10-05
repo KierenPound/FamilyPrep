@@ -73,7 +73,6 @@ struct LegalDocumentsDashboardView: View {
             willsSection
             houseDeedsSection
             songSection
-            driveFolderSection
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
@@ -115,9 +114,9 @@ struct LegalDocumentsDashboardView: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 135)
+                    .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
                     .contentShape(Rectangle())
@@ -378,50 +377,6 @@ struct LegalDocumentsDashboardView: View {
                 }
                 .padding(16)
             }
-        }
-    }
-
-    // MARK: - Drive Folder
-
-    private var driveFolderSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionHeader(title: "Related Files",
-                          systemImage: "folder.fill",
-                          tint: .yellow)
-
-            Link(destination: URL(string: "https://docs.google.com/folderview?authuser=0&id=1mxq_Dc28Rq76dMY69rhufmXoaJG0f5NU")!) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.yellow.opacity(0.18))
-                            .frame(width: 48, height: 48)
-                        Image(systemName: "folder.fill")
-                            .font(.title2)
-                            .foregroundStyle(.yellow)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Open Google Drive Folder")
-                            .font(.subheadline.weight(.semibold))
-                        Text("docs.google.com – Related documents")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(.secondarySystemGroupedBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color(.separator), lineWidth: 0.5)
-                )
-            }
-            .foregroundStyle(.primary)
         }
     }
 

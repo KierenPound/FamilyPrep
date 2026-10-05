@@ -58,9 +58,9 @@ struct CarsDashboardView: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 135)
+                    .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
                     .contentShape(Rectangle())
