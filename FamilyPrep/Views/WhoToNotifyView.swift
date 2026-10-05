@@ -65,8 +65,8 @@ struct WhoToNotifyView: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity)
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)

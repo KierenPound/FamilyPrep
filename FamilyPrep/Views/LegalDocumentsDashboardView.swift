@@ -4,6 +4,13 @@ import PDFKit
 
 struct LegalDocumentsDashboardView: View {
 
+    private struct LegalPhotoDoc: Identifiable, Hashable {
+        let id = UUID()
+        let assetName: String
+        let displayTitle: String
+        let accent: Color
+    }
+
     private struct HouseDeedDoc: Identifiable, Hashable {
         let id = UUID()
         let assetName: String
@@ -18,17 +25,10 @@ struct LegalDocumentsDashboardView: View {
         let accent: Color
     }
 
-    private struct HeaderImageDoc: Identifiable, Hashable {
-        let id = UUID()
-        let assetName: String
-        let displayTitle: String
-        let accent: Color
-    }
-
-    private let headerImages: [HeaderImageDoc] = [
-        HeaderImageDoc(assetName: "legal_1",
-                       displayTitle: "Family photograph",
-                       accent: .blue)
+    private let legalPhotos: [LegalPhotoDoc] = [
+        LegalPhotoDoc(assetName: "gemini_legal_800",
+                      displayTitle: "Family photograph",
+                      accent: .blue)
     ]
 
     private let wills: [WillDoc] = [
@@ -65,7 +65,7 @@ struct LegalDocumentsDashboardView: View {
 
     @State private var selectedHouseDeed: HouseDeedDoc?
     @State private var selectedWill: WillDoc?
-    @State private var selectedHeaderImage: HeaderImageDoc?
+    @State private var selectedLegalPhoto: LegalPhotoDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -83,8 +83,8 @@ struct LegalDocumentsDashboardView: View {
         .sheet(item: $selectedWill) { doc in
             fullscreenWillViewer(for: doc)
         }
-        .sheet(item: $selectedHeaderImage) { doc in
-            fullscreenHeaderImageViewer(for: doc)
+        .sheet(item: $selectedLegalPhoto) { doc in
+            fullscreenLegalPhotoViewer(for: doc)
         }
     }
 
@@ -98,7 +98,7 @@ struct LegalDocumentsDashboardView: View {
 
             cardBackground {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(headerImages) { doc in
+                    ForEach(legalPhotos) { doc in
                         photoThumbnail(doc)
                     }
                 }
@@ -107,15 +107,15 @@ struct LegalDocumentsDashboardView: View {
         }
     }
 
-    private func photoThumbnail(_ doc: HeaderImageDoc) -> some View {
+    private func photoThumbnail(_ doc: LegalPhotoDoc) -> some View {
         Button(action: {
-            selectedHeaderImage = doc
+            selectedLegalPhoto = doc
         }) {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
@@ -496,7 +496,7 @@ struct LegalDocumentsDashboardView: View {
         }
     }
 
-    private func fullscreenHeaderImageViewer(for doc: HeaderImageDoc) -> some View {
+    private func fullscreenLegalPhotoViewer(for doc: LegalPhotoDoc) -> some View {
         NavigationStack {
             GeometryReader { geo in
                 ZStack(alignment: .top) {
@@ -521,7 +521,7 @@ struct LegalDocumentsDashboardView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        selectedHeaderImage = nil
+                        selectedLegalPhoto = nil
                     } label: {
                         Label("Close", systemImage: "xmark.circle.fill")
                             .font(.headline)
@@ -536,6 +536,8 @@ struct LegalDocumentsDashboardView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
         }
     }
 

@@ -11,7 +11,7 @@ struct FuneralArrangementsDashboardView: View {
     }
 
     private let funeralPhotos: [FuneralPhotoDoc] = [
-        FuneralPhotoDoc(assetName: "funeral_1",
+        FuneralPhotoDoc(assetName: "funeral_gemini",
                         displayTitle: "Family photograph",
                         accent: .indigo)
     ]
@@ -60,7 +60,7 @@ struct FuneralArrangementsDashboardView: View {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)

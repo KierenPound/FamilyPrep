@@ -3,20 +3,20 @@ import WebKit
 
 struct CarsDashboardView: View {
 
-    private struct CarPhotoDoc: Identifiable, Hashable {
+    private struct CarsPhotoDoc: Identifiable, Hashable {
         let id = UUID()
         let assetName: String
         let displayTitle: String
         let accent: Color
     }
 
-    private let carPhotos: [CarPhotoDoc] = [
-        CarPhotoDoc(assetName: "cars_1",
-                    displayTitle: "Vehicle photograph",
-                    accent: .orange)
+    private let carsPhotos: [CarsPhotoDoc] = [
+        CarsPhotoDoc(assetName: "gemini_cars_800",
+                     displayTitle: "Vehicle photograph",
+                     accent: .orange)
     ]
 
-    @State private var selectedCarPhoto: CarPhotoDoc?
+    @State private var selectedCarsPhoto: CarsPhotoDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -27,8 +27,8 @@ struct CarsDashboardView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
         .padding(.bottom, 4)
-        .sheet(item: $selectedCarPhoto) { doc in
-            fullscreenCarPhotoViewer(for: doc)
+        .sheet(item: $selectedCarsPhoto) { doc in
+            fullscreenCarsPhotoViewer(for: doc)
         }
     }
 
@@ -38,11 +38,11 @@ struct CarsDashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader(title: "Photos",
                           systemImage: "photo.stack.fill",
-                          tint: .orange)
+                          tint: .blue)
 
             cardBackground {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(carPhotos) { doc in
+                    ForEach(carsPhotos) { doc in
                         photoThumbnail(doc)
                     }
                 }
@@ -51,15 +51,15 @@ struct CarsDashboardView: View {
         }
     }
 
-    private func photoThumbnail(_ doc: CarPhotoDoc) -> some View {
+    private func photoThumbnail(_ doc: CarsPhotoDoc) -> some View {
         Button(action: {
-            selectedCarPhoto = doc
+            selectedCarsPhoto = doc
         }) {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
@@ -344,9 +344,7 @@ SA99 1ZZ
         }
     }
 
-    // MARK: - Fullscreen viewer
-
-    private func fullscreenCarPhotoViewer(for doc: CarPhotoDoc) -> some View {
+    private func fullscreenCarsPhotoViewer(for doc: CarsPhotoDoc) -> some View {
         NavigationStack {
             GeometryReader { geo in
                 ZStack(alignment: .top) {
@@ -371,7 +369,7 @@ SA99 1ZZ
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        selectedCarPhoto = nil
+                        selectedCarsPhoto = nil
                     } label: {
                         Label("Close", systemImage: "xmark.circle.fill")
                             .font(.headline)
@@ -386,6 +384,8 @@ SA99 1ZZ
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
         }
     }
 

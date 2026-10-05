@@ -92,7 +92,7 @@ struct WhatToDoFirstDashboardView: View {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)

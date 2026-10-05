@@ -3,7 +3,7 @@ import WebKit
 
 struct RunningTheHousesDashboardView: View {
 
-    private struct HousePhotoDoc: Identifiable, Hashable {
+    private struct HousesPhotoDoc: Identifiable, Hashable {
         let id = UUID()
         let assetName: String
         let displayTitle: String
@@ -28,10 +28,10 @@ struct RunningTheHousesDashboardView: View {
         let tradesmen: [TradesmanContact]
     }
 
-    private let housePhotos: [HousePhotoDoc] = [
-        HousePhotoDoc(assetName: "houses_1",
-                      displayTitle: "House photograph",
-                      accent: .green)
+    private let housesPhotos: [HousesPhotoDoc] = [
+        HousesPhotoDoc(assetName: "gemini_houses_800",
+                       displayTitle: "House photograph",
+                       accent: .green)
     ]
 
     private let tradesmen: [TradesLocationGroup] = [
@@ -83,7 +83,7 @@ struct RunningTheHousesDashboardView: View {
                             ])
     ]
 
-    @State private var selectedHousePhoto: HousePhotoDoc?
+    @State private var selectedHousesPhoto: HousesPhotoDoc?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -94,8 +94,8 @@ struct RunningTheHousesDashboardView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
         .padding(.bottom, 4)
-        .sheet(item: $selectedHousePhoto) { doc in
-            fullscreenHousePhotoViewer(for: doc)
+        .sheet(item: $selectedHousesPhoto) { doc in
+            fullscreenHousesPhotoViewer(for: doc)
         }
     }
 
@@ -105,11 +105,11 @@ struct RunningTheHousesDashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader(title: "Photos",
                           systemImage: "photo.stack.fill",
-                          tint: .green)
+                          tint: .blue)
 
             cardBackground {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(housePhotos) { doc in
+                    ForEach(housesPhotos) { doc in
                         photoThumbnail(doc)
                     }
                 }
@@ -118,15 +118,15 @@ struct RunningTheHousesDashboardView: View {
         }
     }
 
-    private func photoThumbnail(_ doc: HousePhotoDoc) -> some View {
+    private func photoThumbnail(_ doc: HousesPhotoDoc) -> some View {
         Button(action: {
-            selectedHousePhoto = doc
+            selectedHousesPhoto = doc
         }) {
             ZStack(alignment: .bottomTrailing) {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
@@ -290,9 +290,7 @@ struct RunningTheHousesDashboardView: View {
         }
     }
 
-    // MARK: - Fullscreen viewer
-
-    private func fullscreenHousePhotoViewer(for doc: HousePhotoDoc) -> some View {
+    private func fullscreenHousesPhotoViewer(for doc: HousesPhotoDoc) -> some View {
         NavigationStack {
             GeometryReader { geo in
                 ZStack(alignment: .top) {
@@ -317,7 +315,7 @@ struct RunningTheHousesDashboardView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        selectedHousePhoto = nil
+                        selectedHousesPhoto = nil
                     } label: {
                         Label("Close", systemImage: "xmark.circle.fill")
                             .font(.headline)
@@ -332,6 +330,8 @@ struct RunningTheHousesDashboardView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
         }
     }
 

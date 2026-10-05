@@ -11,7 +11,7 @@ struct ConfirmationDashboardView: View {
     }
 
     private let confirmationPhotos: [ConfirmationPhotoDoc] = [
-        ConfirmationPhotoDoc(assetName: "confirmation_1",
+        ConfirmationPhotoDoc(assetName: "gemini_running_800",
                              displayTitle: "Family photograph",
                              accent: .teal)
     ]
@@ -66,7 +66,7 @@ struct ConfirmationDashboardView: View {
                 Image(doc.assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .aspectRatio(4/3, contentMode: .fill)
                     .clipped()
                     .cornerRadius(11)
@@ -508,53 +508,6 @@ BX9 1HT
         }
     }
 
-    // MARK: - Fullscreen photo viewer
-
-    private func fullscreenConfirmationPhotoViewer(for doc: ConfirmationPhotoDoc) -> some View {
-        NavigationStack {
-            GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    Color.black.ignoresSafeArea()
-
-                    ScrollView([.vertical, .horizontal]) {
-                        Image(doc.assetName)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
-                            .padding(16)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(doc.displayTitle)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        selectedConfirmationPhoto = nil
-                    } label: {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.headline)
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(.white)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule().fill(.white.opacity(0.12))
-                            )
-                    }
-                }
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
-        }
-    }
-
     // MARK: - Shared sub-view helpers
 
     private func formCard(title: String, systemImage: String, tint: Color, body: String) -> some View {
@@ -638,6 +591,51 @@ BX9 1HT
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(tint.opacity(0.22), lineWidth: 0.6)
         )
+    }
+
+    private func fullscreenConfirmationPhotoViewer(for doc: ConfirmationPhotoDoc) -> some View {
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
+
+                    ScrollView([.vertical, .horizontal]) {
+                        Image(doc.assetName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
+                            .padding(16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(doc.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        selectedConfirmationPhoto = nil
+                    } label: {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule().fill(.white.opacity(0.12))
+                            )
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
+        }
     }
 
     // MARK: - Helpers
