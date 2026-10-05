@@ -1,0 +1,30 @@
+# Xcode - Per-user state (schemes, breakpoints, find navigator scopes)
+xcuserdata/
+*.xcuserdatad
+xcuserdatad/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Derived Data & Caches
+DerivedData/
+*.build/
+Carthage/Build/
+
+# Trae & macOS
+.vscode/
+.trae/
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Logs & temporary
+*.log
+*.lock
