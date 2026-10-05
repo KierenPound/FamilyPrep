@@ -16,7 +16,7 @@ struct SectionDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     headerSection
-                    if section.title == "What to Do First" || section.title == "Legal Documents" || section.title == "Who to Notify" || section.title == "Running the Houses" || section.title == "Cars" || section.title == "Funeral Arrangements" || section.title == "Confirmation" {
+                    if section.title == "What to Do First" || section.title == "Legal Documents" || section.title == "Who to Notify" || section.title == "Running the Houses" || section.title == "Cars" || section.title == "Funeral Arrangements" || section.title == "Confirmation" || section.title == "Kieren's Jukebox" {
                         richMediaDashboardSection
                     }
                     notesSection
@@ -63,6 +63,8 @@ struct SectionDetailView: View {
                 FuneralArrangementsDashboardView()
             } else if section.title == "Confirmation" {
                 ConfirmationDashboardView()
+            } else if section.title == "Kieren's Jukebox" {
+                KierensJukeboxDashboardView()
             } else {
                 WhatToDoFirstDashboardView()
             }

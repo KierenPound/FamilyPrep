@@ -12,7 +12,8 @@ struct HomeDashboardView: View {
         "Running the Houses": "house.fill",
         "Funeral Arrangements": "leaf.fill",
         "Cars": "car.fill",
-        "Confirmation": "checkmark.seal.fill"
+        "Confirmation": "checkmark.seal.fill",
+        "Kieren's Jukebox": "music.note.list"
     ]
 
     private let sectionColors: [String: Color] = [
@@ -22,7 +23,8 @@ struct HomeDashboardView: View {
         "Running the Houses": .orange,
         "Funeral Arrangements": .purple,
         "Cars": .indigo,
-        "Confirmation": .teal
+        "Confirmation": .teal,
+        "Kieren's Jukebox": .pink
     ]
 
     var body: some View {

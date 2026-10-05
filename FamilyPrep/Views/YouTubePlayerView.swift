@@ -95,7 +95,7 @@ struct YouTubePlayerView: UIViewRepresentable {
             <div class="player">
                 <iframe id="ytplayer"
                         type="text/html"
-                        src="https://www.youtube-nocookie.com/embed/\(cleanID)?rel=0&playsinline=1&modestbranding=1&origin=https://www.youtube-nocookie.com&widget_referrer=1&iv_load_policy=3&fs=1"
+                        src="https://www.youtube-nocookie.com/embed/\(cleanID)?rel=0&playsinline=1&modestbranding=1&origin=https://www.youtube-nocookie.com&widget_referrer=1&iv_load_policy=3&fs=1&cc_load_policy=0&cc_lang_pref=en&hl=en"
                         frameborder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                         referrerpolicy="no-referrer-when-downgrade"

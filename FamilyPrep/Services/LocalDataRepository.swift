@@ -53,78 +53,112 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
             try seedStandardSections()
         } else {
             sections = saved
+            try ensureStandardSectionsPresent()
         }
     }
 
+    private func ensureStandardSectionsPresent() throws {
+        let standards = Self.standardTitlesBlueprint
+        let existingTitles = Set(sections.map { $0.title })
+        var didChange = false
+        for item in standards {
+            guard !existingTitles.contains(item.title) else { continue }
+            let nextOrder = (sections.map { $0.orderIndex }.max() ?? -1) + 1
+            let section = PrepSection(
+                title: item.title,
+                orderIndex: nextOrder,
+                isStandard: true,
+                youtubeURL: item.youtube,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+            for (itemIndex, text) in item.sampleItems.enumerated() {
+                section.checklistItems.append(
+                    ChecklistItem(text: text, isCompleted: false, orderIndex: itemIndex)
+                )
+            }
+            sections.append(section)
+            didChange = true
+            Task { try? await syncSectionToFirebase(section) }
+        }
+        if didChange {
+            sections.sort { $0.orderIndex < $1.orderIndex }
+            try saveToDisk()
+        }
+    }
+
+    private static let standardTitlesBlueprint: [(title: String, youtube: String, sampleItems: [String])] = [
+        ("What to Do First", "https://www.youtube.com/embed/b4ZypVnbYHM?playsinline=1", [
+            "Notify immediate family members",
+            "Locate important documents folder",
+            "Contact family attorney if available",
+            "Secure the home and vehicles",
+            "Gather financial account information"
+        ]),
+        ("Legal Documents", "https://youtu.be/AL8chWFuM-s", [
+            "Last Will and Testament",
+            "Power of Attorney (Financial)",
+            "Power of Attorney (Medical)",
+            "Living Will / Advance Directive",
+            "Trust documents",
+            "Property deeds and titles"
+        ]),
+        ("Who to Notify", "https://youtu.be/tuyBCSYTs5A", [
+            "Submit batch notification via Life Ledger portal",
+            "Contact TSB — Main + Kieren Retirement + House Funds + Savings accounts",
+            "Contact Starling Bank — Kieren and Bren accounts",
+            "Notify Tembo (ISAs) via their bereavement guide",
+            "Claim NS&I Premium Bonds (Holder Number 30905977E)",
+            "Notify West Midlands Pension Authority (Mum's Pension)",
+            "Call @SIPP on 0141 204 7950 re: Monkton building",
+            "Notify Lifesight / Willis Towers Watson (Dad's Pension)",
+            "Cancel or transfer Octopus Energy (both properties)",
+            "Cancel Sky broadband, TV, stream and mobile (both addresses)",
+            "Cancel direct-debit digital subscriptions",
+            "Secure and log in to all Mac computers (password: birth town)"
+        ]),
+        ("Running the Houses", "", [
+            "Mortgage or rent payments",
+            "Utilities: electric, gas, water, internet",
+            "Home insurance",
+            "Property taxes",
+            "Security alarm monitoring",
+            "Gardening and pool maintenance",
+            "HOA dues"
+        ]),
+        ("Funeral Arrangements", "", [
+            "Contact funeral home",
+            "Choose burial or cremation",
+            "Select cemetery plot if applicable",
+            "Plan memorial service",
+            "Write obituary",
+            "Arrange flowers",
+            "Organize catering for wake",
+            "Notify clergy or celebrant"
+        ]),
+        ("Cars", "", [
+            "Locate vehicle titles",
+            "Car insurance policies",
+            "Registration documents",
+            "Loan or lease payoff info",
+            "Spare keys location",
+            "List of mechanics or service centers"
+        ]),
+        ("Confirmation", "", [
+            "Death certificate ordered (10+ copies)",
+            "Social Security notified",
+            "Employer notified",
+            "Banks and accounts closed",
+            "Insurance claims filed",
+            "Credit bureaus notified",
+            "Postal mail forwarding set",
+            "All final debts settled"
+        ]),
+        ("Kieren's Jukebox", "", [])
+    ]
+
     private func seedStandardSections() throws {
-        let standardTitles: [(title: String, youtube: String, sampleItems: [String])] = [
-            ("What to Do First", "https://www.youtube.com/embed/b4ZypVnbYHM?playsinline=1", [
-                "Notify immediate family members",
-                "Locate important documents folder",
-                "Contact family attorney if available",
-                "Secure the home and vehicles",
-                "Gather financial account information"
-            ]),
-            ("Legal Documents", "https://youtu.be/AL8chWFuM-s", [
-                "Last Will and Testament",
-                "Power of Attorney (Financial)",
-                "Power of Attorney (Medical)",
-                "Living Will / Advance Directive",
-                "Trust documents",
-                "Property deeds and titles"
-            ]),
-            ("Who to Notify", "https://youtu.be/tuyBCSYTs5A", [
-                "Submit batch notification via Life Ledger portal",
-                "Contact TSB — Main + Kieren Retirement + House Funds + Savings accounts",
-                "Contact Starling Bank — Kieren and Bren accounts",
-                "Notify Tembo (ISAs) via their bereavement guide",
-                "Claim NS&I Premium Bonds (Holder Number 30905977E)",
-                "Notify West Midlands Pension Authority (Mum's Pension)",
-                "Call @SIPP on 0141 204 7950 re: Monkton building",
-                "Notify Lifesight / Willis Towers Watson (Dad's Pension)",
-                "Cancel or transfer Octopus Energy (both properties)",
-                "Cancel Sky broadband, TV, stream and mobile (both addresses)",
-                "Cancel direct-debit digital subscriptions",
-                "Secure and log in to all Mac computers (password: birth town)"
-            ]),
-            ("Running the Houses", "", [
-                "Mortgage or rent payments",
-                "Utilities: electric, gas, water, internet",
-                "Home insurance",
-                "Property taxes",
-                "Security alarm monitoring",
-                "Gardening and pool maintenance",
-                "HOA dues"
-            ]),
-            ("Funeral Arrangements", "", [
-                "Contact funeral home",
-                "Choose burial or cremation",
-                "Select cemetery plot if applicable",
-                "Plan memorial service",
-                "Write obituary",
-                "Arrange flowers",
-                "Organize catering for wake",
-                "Notify clergy or celebrant"
-            ]),
-            ("Cars", "", [
-                "Locate vehicle titles",
-                "Car insurance policies",
-                "Registration documents",
-                "Loan or lease payoff info",
-                "Spare keys location",
-                "List of mechanics or service centers"
-            ]),
-            ("Confirmation", "", [
-                "Death certificate ordered (10+ copies)",
-                "Social Security notified",
-                "Employer notified",
-                "Banks and accounts closed",
-                "Insurance claims filed",
-                "Credit bureaus notified",
-                "Postal mail forwarding set",
-                "All final debts settled"
-            ])
-        ]
+        let standardTitles = Self.standardTitlesBlueprint
 
         var seeded: [PrepSection] = []
         for (index, item) in standardTitles.enumerated() {
