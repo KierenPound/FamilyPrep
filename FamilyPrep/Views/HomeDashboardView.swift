@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeDashboardView: View {
     @EnvironmentObject private var repository: LocalDataRepository
+    @State private var showSettings = false
     @State private var showAddSheet = false
     @State private var newSectionTitle = ""
 
@@ -48,6 +49,17 @@ struct HomeDashboardView: View {
             .navigationTitle("Family Prep")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .sheet(isPresented: $showSettings) {
+                        SettingsView()
+                            .environment(\.appState, AppState.shared)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")

@@ -7,12 +7,14 @@ struct FamilyPrepApp: App {
     init() {
         let repo = LocalDataRepository()
         _repository = StateObject(wrappedValue: repo)
+        SupabaseVaultService.shared.configure()
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootContainerView()
                 .environmentObject(repository)
+                .environment(\.appState, AppState.shared)
         }
     }
 }
