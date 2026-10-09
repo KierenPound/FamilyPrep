@@ -1,5 +1,5 @@
 -- ============================================================================
--- FamilyPrep: Master Consolidated Migration Script (Fully Idempotent)
+-- FamilyPrep: Master Migration Script (RLS Recursion Fix)
 -- Target: https://mpsygpgaakdtlgjzmbtr.supabase.co
 -- ============================================================================
 
@@ -117,25 +117,9 @@ ALTER TABLE public.estate_access   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents       ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
--- 6. SECURITY DEFINER HELPERS (With row_security = off to prevent recursion)
+-- 6. SECURITY DEFINER HELPERS (With row_security = off)
 -- ---------------------------------------------------------------------------
 
--- 6a. Estate Ownership Lookup Helper
-CREATE OR REPLACE FUNCTION public.is_estate_owner(check_estate_id uuid)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public, pg_temp
-SET row_security = off
-AS $$
-    SELECT EXISTS (
-        SELECT 1 
-        FROM public.estates 
-        WHERE id = check_estate_id 
-        AND owner_id = auth.uid()
-    );
-$$;
-
--- 6b. Parametrized Allowed Estate IDs Helper
 CREATE OR REPLACE FUNCTION public.get_allowed_estate_ids(requested_role text)
 RETURNS SETOF uuid
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -149,7 +133,6 @@ AS $$
     AND    (requested_role IS NULL OR role = requested_role);
 $$;
 
--- 6c. Zero-argument Overload Helper
 CREATE OR REPLACE FUNCTION public.get_allowed_estate_ids()
 RETURNS SETOF uuid
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -159,7 +142,6 @@ AS $$
     SELECT public.get_allowed_estate_ids(NULL::text);
 $$;
 
--- 6d. Role Resolver Helper
 CREATE OR REPLACE FUNCTION public.get_estate_role_for_current_user(requested_estate_id uuid DEFAULT NULL)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -205,18 +187,14 @@ CREATE POLICY estates_owner_delete ON public.estates
 
 -- ---------------------------------------------------------------------------
 -- 8. POLICIES: public.estate_access
+-- ZERO CROSS-TABLE LOOKUPS TO GUARANTEE NO RECURSION
 -- ---------------------------------------------------------------------------
--- IMPORTANT: estate_access policies call public.is_estate_owner() which runs
---            with row_security = off to safely evaluate ownership on estates
---            without re-triggering RLS on public.estates.
-
 DROP POLICY IF EXISTS estate_access_select_linked ON public.estate_access;
 CREATE POLICY estate_access_select_linked ON public.estate_access
     FOR SELECT
     TO anon, authenticated
     USING (
         user_id = auth.uid()
-        OR public.is_estate_owner(estate_id)
         OR (status = 'pending' AND user_id IS NULL AND invite_code IS NOT NULL)
     );
 
@@ -225,7 +203,8 @@ CREATE POLICY estate_access_owner_insert ON public.estate_access
     FOR INSERT
     TO authenticated
     WITH CHECK (
-        public.is_estate_owner(estate_id)
+        -- Allow self-insert for owner access row or when authorized
+        user_id = auth.uid() OR estate_id IN (SELECT public.get_allowed_estate_ids('owner'))
     );
 
 DROP POLICY IF EXISTS estate_access_owner_update ON public.estate_access;
@@ -233,10 +212,10 @@ CREATE POLICY estate_access_owner_update ON public.estate_access
     FOR UPDATE
     TO authenticated
     USING (
-        public.is_estate_owner(estate_id)
+        estate_id IN (SELECT public.get_allowed_estate_ids('owner'))
     )
     WITH CHECK (
-        public.is_estate_owner(estate_id)
+        estate_id IN (SELECT public.get_allowed_estate_ids('owner'))
     );
 
 DROP POLICY IF EXISTS estate_access_owner_delete ON public.estate_access;
@@ -244,7 +223,7 @@ CREATE POLICY estate_access_owner_delete ON public.estate_access
     FOR DELETE
     TO authenticated
     USING (
-        public.is_estate_owner(estate_id)
+        estate_id IN (SELECT public.get_allowed_estate_ids('owner'))
     );
 
 DROP POLICY IF EXISTS estate_access_claim_pending_invite ON public.estate_access;
