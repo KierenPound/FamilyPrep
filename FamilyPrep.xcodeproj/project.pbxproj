@@ -19,6 +19,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C35F80D730792F82002D078E /* FamilyPrep.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = FamilyPrep.xcodeproj; sourceTree = "<group>"; };
 		C3F3B50C3070593C00A890C8 /* FamilyPrep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FamilyPrep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -48,6 +49,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C35F80D830792F82002D078E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		C3B2822D30756EF800122429 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -135,6 +143,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C3F3B50D3070593C00A890C8 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = C35F80D830792F82002D078E /* Products */;
+					ProjectRef = C35F80D730792F82002D078E /* FamilyPrep.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				C3F3B50B3070593C00A890C8 /* FamilyPrep */,
