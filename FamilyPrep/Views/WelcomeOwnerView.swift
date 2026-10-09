@@ -15,6 +15,7 @@ struct WelcomeOwnerView: View {
     @State private var generatedInvite: ExecutorInvite?
     @State private var errorMessage: String?
     @State private var showMailComposer: Bool = false
+    @State private var isSigningIn: Bool = false
 
     private var isEmailValid: Bool {
         let trimmed = executorEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -81,15 +82,22 @@ struct WelcomeOwnerView: View {
             ) { _ in
                 Button("OK") { errorMessage = nil }
             } message: { msg in
-                // LAST-LINE-OF-DEFENCE: beautify AGAIN at render-time. Any raw
-                // Postgres/RLS "permission denied" that leaked past every other
-                // layer is caught here and never shown to the user verbatim.
-                let wrappedError = NSError(
-                    domain: "FamilyPrepUI",
-                    code: 0,
-                    userInfo: [NSLocalizedDescriptionKey: msg]
-                )
-                Text(HumanReadableError.message(for: wrappedError))
+                // LAST-LINE-OF-DEFENCE: only re-run the beautifier if the
+                // message appears to contain a raw hostile code/word that we
+                // never want shown to the user. Otherwise render verbatim
+                // (the View layer already beautified it once in the catch
+                // block, and double-wrapping collapsed all the semantic
+                // metadata like domain + code in an earlier revision).
+                if HumanReadableError.looksLikeRawUnhandledError(msg) {
+                    let wrappedError = NSError(
+                        domain: "FamilyPrepUI",
+                        code: 0,
+                        userInfo: [NSLocalizedDescriptionKey: msg]
+                    )
+                    Text(HumanReadableError.message(for: wrappedError))
+                } else {
+                    Text(msg)
+                }
             }
         }
     }
@@ -120,24 +128,61 @@ struct WelcomeOwnerView: View {
     }
 
     private var accountCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let service = SupabaseVaultService.shared
+        let isAuthenticated = service.isAuthenticated
+
+        return VStack(alignment: .leading, spacing: 14) {
             sectionHeader(title: "Your account",
                           systemImage: "person.crop.circle.fill",
                           tint: .blue)
 
             cardBackground {
                 VStack(alignment: .leading, spacing: 0) {
-                    accountRow(label: "Name",
-                               value: userDisplayName ?? "Signed in user",
-                               accent: .blue)
+                    accountRow(
+                        label: "Name",
+                        value: isAuthenticated ? (userDisplayName ?? "Signed in user") : "Guest (offline only)",
+                        accent: .blue,
+                        valueBold: !isAuthenticated
+                    )
 
                     Divider()
 
-                    accountRow(label: "Email",
-                               value: userEmail ?? "No email on file",
-                               accent: .blue)
+                    if isAuthenticated {
+                        accountRow(
+                            label: "Email",
+                            value: userEmail ?? "No email on file",
+                            accent: .blue
+                        )
+                        Divider()
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Email")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.blue)
 
-                    Divider()
+                            Text("Sign in with Apple to link your cloud identity as estate owner and invite an executor.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            SignInWithAppleButton(style: .compact) {
+                                Task { await handleWelcomeSignInWithApple() }
+                            }
+                            .opacity(isSigningIn ? 0.6 : 1.0)
+                            .overlay(alignment: .trailing) {
+                                if isSigningIn {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .tint(.white)
+                                        .padding(.trailing, 16)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+
+                        Divider()
+                    }
 
                     accountRow(label: "Role",
                                value: "Estate Owner",
@@ -371,6 +416,39 @@ struct WelcomeOwnerView: View {
 
     // MARK: - Actions
 
+    private func handleWelcomeSignInWithApple() async {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Cloud vault not configured. Install the supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist, or skip this step and continue offline."
+            return
+        }
+        isSigningIn = true
+        defer { isSigningIn = false }
+        do {
+            let cred = try await runAppleSignIn()
+            let (email, name) = try await service.signInWithApple(
+                identityToken: cred.identityToken,
+                nonce: cred.nonce,
+                email: cred.email,
+                givenName: cred.givenName,
+                familyName: cred.familyName
+            )
+            userEmail = email
+            userDisplayName = name
+            do {
+                _ = try await service.linkOwnerEstateToCurrentUser(estateID: estateID)
+                NSLog("FamilyPrepUI ✅ WelcomeOwnerView linkOwnerEstate ok")
+            } catch {
+                let ns = error as NSError
+                NSLog("FamilyPrepUI ⚠️ linkOwnerEstateToCurrentUser failed (non-fatal): \(ns.domain) \(ns.code) \(ns.localizedDescription)")
+            }
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepUI ❌ WelcomeOwnerSignIn: \(ns.domain) \(ns.code) \(ns.localizedDescription)")
+            errorMessage = HumanReadableError.message(for: error)
+        }
+    }
+
     private func generateInviteTapped() {
         let service = SupabaseVaultService.shared
         NSLog("FamilyPrepUI generateInviteTapped BEGIN — service.isConfigured=\(service.isConfigured), estateID=\(estateID.uuidString), email=\(executorEmail)")
@@ -422,30 +500,100 @@ struct WelcomeOwnerView: View {
 // MARK: - Error beautifier (never surface raw Postgres/RPC messages to the user)
 
 enum HumanReadableError {
+
+    /// Returns true if the string contains words/Postgres error codes that
+    /// indicate it LEAKED past every other layer and MUST be re-beautified
+    /// before the user sees it. Any string we intentionally synthesized
+    /// ourselves ("Sign in required…") returns false and is shown verbatim.
+    static func looksLikeRawUnhandledError(_ text: String) -> Bool {
+        let haystack = text.lowercased()
+        let hostilePatterns = [
+            "permission denied",
+            "row level security",
+            "violates policy",
+            "42501",
+            "duplicate key",
+            "23505",
+            "not-null constraint",
+            "23502",
+            "foreign key",
+            "23503",
+            "unique constraint",
+            "postgres",
+            "plpgsql",
+            "relation",
+            "column",
+            "table",
+            "\"public.\"",
+            "auth.users",
+            "estate_access",
+            "supabasevault code=0",
+        ]
+        return hostilePatterns.contains { haystack.contains($0) }
+    }
+
     static func message(for error: Error) -> String {
         let ns = error as NSError
         let msg = ns.localizedDescription.lowercased()
+        let originalMsg = ns.localizedDescription
         let domain = ns.domain.lowercased()
+
+        // -------------------------------------------------------------------
+        // 0. Fast-pass: if we ALREADY SYNTHESIZED a user-friendly message
+        //    (no raw-SQL/Postgres jargon), return it verbatim instead of
+        //    trying to pattern-match code/domain again. This survives
+        //    LocalizedError enum bridging and double-catch chains.
+        // -------------------------------------------------------------------
+        if !originalMsg.isEmpty, !looksLikeRawUnhandledError(originalMsg) {
+            // But we still want to avoid forwarding raw SDK HTTP strings like
+            // "statusCode=403" even though they don't contain SQL keywords.
+            // These ones are safe: explicit phrases we wrote in this module.
+            let trustedPrefixes = [
+                "Sign in required to send executor invites",
+                "Sign in required to send an invite code",
+                "SupabaseVaultService is not configured",
+                "Your signed-in identity and your cloud estate aren't linked yet",
+                "SupabaseBridge",
+                "Executor email is required",
+                "Invite code must be 6 characters",
+                "Failed to generate a unique invite code",
+                "Invalid or already claimed",
+                "Invite couldn't be claimed",
+                "Your device seems offline",
+                "This email was already sent an invite",
+                "A record like this already exists",
+                "Cloud vault not configured",
+                "Supabase returned a server error",
+                "Family Prep couldn't complete that request",
+            ]
+            for p in trustedPrefixes where originalMsg.hasPrefix(p) {
+                return originalMsg
+            }
+            // Also: any message that was clearly built by the beautifier in a
+            // previous pass (contains multi-line formatted phrases we use)
+            // should short-circuit unchanged.
+            if originalMsg.contains("Close and re-launch Family Prep")
+                || originalMsg.contains("Install the supabase-swift SPM")
+                || originalMsg.contains("(For support:") {
+                return originalMsg
+            }
+        }
 
         // -------------------------------------------------------------------
         // 1. SupabaseVaultService codes we explicitly throw (friendly paths)
         // -------------------------------------------------------------------
         if domain == "supabasevault" {
             switch ns.code {
-            case 201, 202:
-                return ns.localizedDescription
-            case 203:
-                return ns.localizedDescription
-            case 501:
-                return ns.localizedDescription
+            case 201, 202, 203, 501:
+                return originalMsg
             case 100 where msg.contains("invite code must be 6"):
-                return ns.localizedDescription
+                return originalMsg
             case 100 where msg.contains("executor email is required"):
-                return ns.localizedDescription
+                return originalMsg
             case 100 where msg.contains("failed to generate a unique"):
-                return ns.localizedDescription
+                return originalMsg
             case 100 where msg.contains("invalid or already claimed"):
-                return ns.localizedDescription
+                return originalMsg
             default:
                 break
             }
@@ -500,7 +648,13 @@ enum HumanReadableError {
 
         // -------------------------------------------------------------------
         // 3. Absolute last-resort fallback — NEVER surface raw msg to user
+        //    unless we know it's clean (checked above). If it IS clean and
+        //    non-empty, fall through to showing original, else use the
+        //    generic banner with the support code.
         // -------------------------------------------------------------------
+        if !originalMsg.isEmpty, !looksLikeRawUnhandledError(originalMsg) {
+            return originalMsg
+        }
         return """
         Invite couldn't be created right now.
         Close and re-launch Family Prep, sign out and back in, then try again.

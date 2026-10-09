@@ -11,15 +11,47 @@ struct OnboardingView: View {
     var onSetupEstate: () -> Void
     var onClaimInvite: () -> Void
 
+    @State private var isSigningIn: Bool = false
+    @State private var signInError: String?
+
     var body: some View {
         NavigationStack {
             ZStack {
                 PastelEditorialCanvas()
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 24) {
                         heroHeader
                             .padding(.top, 24)
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            sectionHeader(
+                                title: "Sign in to link your identity",
+                                systemImage: "apple.logo",
+                                tint: .primary
+                            )
+
+                            SignInWithAppleButton(style: .standard) {
+                                Task { await handleSignInWithApple() }
+                            }
+                            .opacity(isSigningIn ? 0.6 : 1.0)
+                            .overlay(alignment: .trailing) {
+                                if isSigningIn {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .tint(.white)
+                                        .padding(.trailing, 20)
+                                }
+                            }
+
+                            Text("Optional: Sign in with your Apple ID to connect your cloud identity. You can also continue as a guest and sign in later.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 2)
+                        }
+
+                        Divider().padding(.vertical, 4)
 
                         optionCard(
                             title: "Setup My Estate",
@@ -45,6 +77,39 @@ struct OnboardingView: View {
             }
             .navigationTitle("Get Started")
             .navigationBarTitleDisplayMode(.large)
+            .alert(
+                "Sign in with Apple failed",
+                isPresented: .constant(signInError != nil),
+                presenting: signInError
+            ) { _ in
+                Button("OK") { signInError = nil }
+            } message: { msg in
+                Text(msg)
+            }
+        }
+    }
+
+    private func handleSignInWithApple() async {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            signInError = "Cloud vault not configured yet. Continue as guest to set up your estate locally, then sign in from Settings."
+            return
+        }
+        isSigningIn = true
+        defer { isSigningIn = false }
+        do {
+            let cred = try await runAppleSignIn()
+            _ = try await service.signInWithApple(
+                identityToken: cred.identityToken,
+                nonce: cred.nonce,
+                email: cred.email,
+                givenName: cred.givenName,
+                familyName: cred.familyName
+            )
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepUI Onboarding ❌ signInWithApple: \(ns.domain) \(ns.code) \(ns.localizedDescription)")
+            signInError = HumanReadableError.message(for: error)
         }
     }
 
@@ -136,6 +201,22 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color.blue.opacity(0.08))
         )
+    }
+
+    private func sectionHeader(title: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(tint)
+            }
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(.primary)
+        }
     }
 }
 

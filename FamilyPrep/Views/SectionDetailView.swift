@@ -3,12 +3,15 @@ import SwiftUI
 @MainActor
 struct SectionDetailView: View {
     @EnvironmentObject private var repository: LocalDataRepository
+    @Environment(\.appState) private var appState
     let section: PrepSection
     @State private var newChecklistText: String = ""
     @FocusState private var isNotesFocused: Bool
     @State private var renameChecklistItemId: String?
     @State private var renameChecklistText: String = ""
     @State private var renameChecklistPresented: Bool = false
+
+    private var isOwner: Bool { appState.isOwner }
 
     var body: some View {
         ZStack {
@@ -102,11 +105,24 @@ struct SectionDetailView: View {
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Notes", systemImage: "note.text")
-                .font(.title3.bold())
+            HStack(spacing: 8) {
+                Label("Notes", systemImage: "note.text")
+                    .font(.title3.bold())
+                if !isOwner {
+                    Text("Read-only")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.14))
+                        )
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             ZStack(alignment: .topLeading) {
-                if section.notes.isEmpty && !isNotesFocused {
+                if section.notes.isEmpty && !isNotesFocused && isOwner {
                     Text("Type notes, instructions, or important details here...")
                         .foregroundStyle(.tertiary)
                         .padding(.top, 14)
@@ -116,6 +132,7 @@ struct SectionDetailView: View {
                 TextEditor(text: Binding(
                     get: { section.notes },
                     set: { newValue in
+                        guard isOwner else { return }
                         section.notes = newValue
                         throttleSaveSection()
                     }
@@ -126,21 +143,36 @@ struct SectionDetailView: View {
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground))
+                            .fill(isOwner
+                                  ? Color(.secondarySystemGroupedBackground)
+                                  : Color(.tertiarySystemGroupedBackground).opacity(0.6))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .stroke(Color(.separator), lineWidth: 0.5)
                     )
+                    .disabled(!isOwner)
+                    .allowsHitTesting(isOwner)
             }
         }
     }
 
     private var checklistSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
                 Label("Checklist", systemImage: "checklist.checked")
                     .font(.title3.bold())
+                if !isOwner {
+                    Text("Read-only")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.14))
+                        )
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Text("\(completedCount)/\(section.checklistItems.count)")
                     .font(.caption).monospacedDigit()
@@ -154,23 +186,25 @@ struct SectionDetailView: View {
                         .padding(.leading, 8)
                 }
 
-                HStack(spacing: 10) {
-                    TextField("Add a new item...", text: $newChecklistText)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 15, weight: .medium))
-                        .lineLimit(2)
-                        .allowsTightening(true)
-                        .minimumScaleFactor(0.85)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .onSubmit { addChecklistItem() }
-                    Button(action: addChecklistItem) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.tint)
+                if isOwner {
+                    HStack(spacing: 10) {
+                        TextField("Add a new item...", text: $newChecklistText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 15, weight: .medium))
+                            .lineLimit(2)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onSubmit { addChecklistItem() }
+                        Button(action: addChecklistItem) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.tint)
+                        }
+                        .disabled(newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .disabled(newChecklistText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .padding(.leading, 8)
                 }
-                .padding(.leading, 8)
             }
         }
     }
@@ -215,38 +249,40 @@ struct SectionDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Menu {
-                Button(action: {
-                    renameChecklistItemId = item.id
-                    renameChecklistText = item.text
-                    renameChecklistPresented = true
-                }) {
-                    Label("Rename", systemImage: "pencil")
-                }
+            if isOwner {
+                Menu {
+                    Button(action: {
+                        renameChecklistItemId = item.id
+                        renameChecklistText = item.text
+                        renameChecklistPresented = true
+                    }) {
+                        Label("Rename", systemImage: "pencil")
+                    }
 
-                Button(role: .destructive, action: {
-                    let snapshot = item
-                    section.checklistItems.removeAll { $0.id == snapshot.id }
-                    Task {
-                        do {
-                            try await repository.deleteChecklistItem(snapshot, from: section)
-                        } catch {
-                            await MainActor.run {
-                                if !section.checklistItems.contains(where: { $0.id == snapshot.id }) {
-                                    section.checklistItems.append(snapshot)
+                    Button(role: .destructive, action: {
+                        let snapshot = item
+                        section.checklistItems.removeAll { $0.id == snapshot.id }
+                        Task {
+                            do {
+                                try await repository.deleteChecklistItem(snapshot, from: section)
+                            } catch {
+                                await MainActor.run {
+                                    if !section.checklistItems.contains(where: { $0.id == snapshot.id }) {
+                                        section.checklistItems.append(snapshot)
+                                    }
                                 }
                             }
                         }
+                    }) {
+                        Label("Delete", systemImage: "trash")
                     }
-                }) {
-                    Label("Delete", systemImage: "trash")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.secondary)
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .foregroundStyle(.secondary)
+                .menuStyle(.borderlessButton)
+                .frame(minWidth: 30, alignment: .trailing)
             }
-            .menuStyle(.borderlessButton)
-            .frame(minWidth: 30, alignment: .trailing)
         }
         .contentShape(Rectangle())
         .onTapGesture {

@@ -322,6 +322,31 @@ final class SupabaseVaultService {
         }
     }
 
+    private static let siwaFallbackDefaultsSuiteName = "FamilyPrep.SIWA.Fallback"
+    private static let siwaFallbackEmailKey = "cached_siwa_email"
+    private static let siwaFallbackNameKey = "cached_siwa_displayName"
+
+    private static var siwaFallbackDefaults: UserDefaults {
+        UserDefaults(suiteName: siwaFallbackDefaultsSuiteName) ?? .standard
+    }
+
+    static func cacheAppleFirstSignIn(email: String?, displayName: String?) {
+        let d = siwaFallbackDefaults
+        if let email, !email.isEmpty {
+            d.set(email, forKey: siwaFallbackEmailKey)
+        }
+        if let displayName, !displayName.isEmpty {
+            d.set(displayName, forKey: siwaFallbackNameKey)
+        }
+    }
+
+    static func cachedAppleFirstSignIn() -> (email: String?, displayName: String?) {
+        let d = siwaFallbackDefaults
+        let email = d.string(forKey: siwaFallbackEmailKey)
+        let name = d.string(forKey: siwaFallbackNameKey)
+        return (email, name)
+    }
+
     private enum BridgeError: LocalizedError {
         case missing(String)
 
@@ -1006,14 +1031,23 @@ final class SupabaseVaultService {
 
     func currentUserProfile() async -> (email: String?, displayName: String?) {
         #if canImport(Supabase)
-        guard supabase != nil else { return (nil, nil) }
+        guard supabase != nil else {
+            let cached = Self.cachedAppleFirstSignIn()
+            return (cached.email, cached.displayName)
+        }
         do {
-            return try await currentUserFromSession()
+            let (authEmail, authName) = try await currentUserFromSession()
+            let cached = Self.cachedAppleFirstSignIn()
+            let finalEmail = authEmail ?? cached.email
+            let finalName = authName ?? cached.displayName
+            return (finalEmail, finalName)
         } catch {
-            return (nil, nil)
+            let cached = Self.cachedAppleFirstSignIn()
+            return (cached.email, cached.displayName)
         }
         #else
-        return (nil, nil)
+        let cached = Self.cachedAppleFirstSignIn()
+        return (cached.email, cached.displayName)
         #endif
     }
 
@@ -1090,6 +1124,86 @@ final class SupabaseVaultService {
         #if canImport(Supabase)
         guard let supabase = supabase else { throw makeNotConfiguredError() }
         try await supabase.auth.signOut()
+        #else
+        throw makeNotConfiguredError()
+        #endif
+    }
+
+    @discardableResult
+    func signInWithApple(
+        identityToken: String,
+        nonce: String,
+        email: String?,
+        givenName: String?,
+        familyName: String?
+    ) async throws -> (email: String?, displayName: String?) {
+        #if canImport(Supabase)
+        guard let supabase = supabase else { throw makeNotConfiguredError() }
+        do {
+            NSLog("FamilyPrepVault 🍎 [signInWithApple] exchanging id token for Supabase session (nonce=\(nonce.prefix(6))…, token=\(identityToken.prefix(8))…)")
+            _ = try await supabase.auth.signInWithIdToken(
+                credentials: OpenIDConnectCredentials(
+                    provider: .apple,
+                    idToken: identityToken,
+                    nonce: nonce
+                )
+            )
+            NSLog("FamilyPrepVault 🍎 ✅ signInWithIdToken succeeded")
+
+            var displayName: String?
+            if let g = givenName, let f = familyName {
+                displayName = "\(g) \(f)"
+            } else if let g = givenName {
+                displayName = g
+            } else if let f = familyName {
+                displayName = f
+            }
+
+            if let n = displayName {
+                Self.cacheAppleFirstSignIn(email: email, displayName: n)
+            } else if let e = email {
+                Self.cacheAppleFirstSignIn(email: e, displayName: nil)
+            }
+
+            var updateAttempted = false
+            do {
+                #if canImport(Auth)
+                if let e = email {
+                    updateAttempted = true
+                    NSLog("FamilyPrepVault 🍎 calling auth.updateUser (email: \(e))")
+                    _ = try await supabase.auth.update(user: UserAttributes(email: e))
+                }
+                #endif
+            } catch {
+                NSLog("FamilyPrepVault 🍎 ⚠️ updateUser(email) failed (non-fatal, cached to UserDefaults): \(error.localizedDescription)")
+            }
+            if !updateAttempted {
+                NSLog("FamilyPrepVault 🍎 updateUser not attempted (no email provided); relying on UserDefaults fallback for name display")
+            }
+
+            await refreshAuthState()
+            let profile = try await currentUserFromSession()
+            let cached = Self.cachedAppleFirstSignIn()
+            let finalEmail = profile.0 ?? cached.email
+            let finalName = profile.1 ?? cached.displayName
+            NSLog("FamilyPrepVault 🍎 final profile — email=\(String(describing: finalEmail)), name=\(String(describing: finalName))")
+            return (finalEmail, finalName)
+        } catch {
+            NSLog("FamilyPrepVault 🍎 ❌ signInWithApple error: \(error.localizedDescription)")
+            throw error
+        }
+        #else
+        throw makeNotConfiguredError()
+        #endif
+    }
+
+    @discardableResult
+    func linkOwnerEstateToCurrentUser(estateID: UUID) async throws -> UUID {
+        #if canImport(Supabase)
+        guard supabase != nil else { throw makeNotConfiguredError() }
+        let uid = try await currentUserID()
+        try await ensureOwnerBackingRows(estateID: estateID, ownerID: uid)
+        return estateID
         #else
         throw makeNotConfiguredError()
         #endif

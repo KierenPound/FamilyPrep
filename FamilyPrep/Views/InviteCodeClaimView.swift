@@ -8,6 +8,8 @@ struct InviteCodeClaimView: View {
 
     @State private var code: String = ""
     @State private var isClaiming: Bool = false
+    @State private var isSigningIn: Bool = false
+    @State private var signInMessage: String?
     @State private var errorMessage: String?
     @State private var shakeTrigger: Bool = false
 
@@ -21,9 +23,11 @@ struct InviteCodeClaimView: View {
                 PastelEditorialCanvas()
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 24) {
                         heroHeader
                             .padding(.top, 24)
+
+                        signInCard
 
                         codeEntryCard
                             .modifier(Shake(animatableData: shakeTrigger ? 1 : 0))
@@ -165,6 +169,74 @@ struct InviteCodeClaimView: View {
         }
     }
 
+    private var signInCard: some View {
+        let service = SupabaseVaultService.shared
+        let isAuthenticated = service.isAuthenticated
+
+        return VStack(alignment: .leading, spacing: 14) {
+            sectionHeader(title: "Your identity",
+                          systemImage: "apple.logo",
+                          tint: .primary)
+
+            VStack(alignment: .leading, spacing: 12) {
+                if isAuthenticated {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.green.opacity(0.14))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(Color.green)
+                                .font(.headline)
+                        }
+                        Text("Signed in with Apple")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    Text("You can now claim your executor invite code below.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Before claiming an invite code you need to sign in with your Apple ID so we can link your identity to the estate.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    SignInWithAppleButton(style: .compact) {
+                        Task { await handleSignInWithApple() }
+                    }
+                    .opacity(isSigningIn ? 0.6 : 1.0)
+                    .overlay(alignment: .trailing) {
+                        if isSigningIn {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(.white)
+                                .padding(.trailing, 16)
+                        }
+                    }
+
+                    if let signInMessage {
+                        Text(signInMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color(.separator).opacity(0.5), lineWidth: 0.5)
+            )
+        }
+    }
+
     private var backHint: some View {
         Button(action: onBack) {
             HStack(spacing: 6) {
@@ -199,6 +271,33 @@ struct InviteCodeClaimView: View {
     }
 
     // MARK: - Actions
+
+    private func handleSignInWithApple() async {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Invite codes require Family Prep cloud. Ask the Estate Owner for the code once the cloud vault is enabled."
+            withAnimation(.default) { shakeTrigger.toggle() }
+            return
+        }
+        isSigningIn = true
+        signInMessage = nil
+        defer { isSigningIn = false }
+        do {
+            let cred = try await runAppleSignIn()
+            _ = try await service.signInWithApple(
+                identityToken: cred.identityToken,
+                nonce: cred.nonce,
+                email: cred.email,
+                givenName: cred.givenName,
+                familyName: cred.familyName
+            )
+            signInMessage = "✅ Signed in successfully. Now enter your invite code below."
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepUI InviteCodeClaim ❌ signInWithApple: \(ns.domain) \(ns.code) \(ns.localizedDescription)")
+            errorMessage = HumanReadableError.message(for: error)
+        }
+    }
 
     private func claimTapped() {
         let service = SupabaseVaultService.shared

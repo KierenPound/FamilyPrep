@@ -2,17 +2,32 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
+@MainActor
 struct AttachmentsView: View {
     @EnvironmentObject private var repository: LocalDataRepository
+    @Environment(\.appState) private var appState
     let section: PrepSection
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var isImportingPDF = false
 
+    private var isOwner: Bool { appState.isOwner }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
                 Label("Attachments", systemImage: "paperclip")
                     .font(.title3.bold())
+                if !isOwner {
+                    Text("Read-only")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.14))
+                        )
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 if repository.isLoading {
                     ProgressView()
@@ -20,43 +35,45 @@ struct AttachmentsView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                PhotosPicker(selection: $selectedPhotoItems,
-                             maxSelectionCount: 5,
-                             matching: .images,
-                             preferredItemEncoding: .compatible) {
-                    Label("Add Photos", systemImage: "photo.on.rectangle.angled")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.blue)
-                .onChange(of: selectedPhotoItems) { _, newValue in
-                    Task {
-                        for item in newValue {
-                            do {
-                                _ = try await repository.uploadPhoto(item, to: section)
-                            } catch {
-                                repository.errorMessage = error.localizedDescription
-                            }
-                        }
-                        selectedPhotoItems.removeAll()
+            if isOwner {
+                HStack(spacing: 10) {
+                    PhotosPicker(selection: $selectedPhotoItems,
+                                 maxSelectionCount: 5,
+                                 matching: .images,
+                                 preferredItemEncoding: .compatible) {
+                        Label("Add Photos", systemImage: "photo.on.rectangle.angled")
+                            .frame(maxWidth: .infinity)
                     }
-                }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.blue)
+                    .onChange(of: selectedPhotoItems) { _, newValue in
+                        Task {
+                            for item in newValue {
+                                do {
+                                    _ = try await repository.uploadPhoto(item, to: section)
+                                } catch {
+                                    repository.errorMessage = error.localizedDescription
+                                }
+                            }
+                            selectedPhotoItems.removeAll()
+                        }
+                    }
 
-                Button(action: { isImportingPDF = true }) {
-                    Label("Add PDF / File", systemImage: "doc.fill.badge.plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.orange)
-                .fileImporter(
-                    isPresented: $isImportingPDF,
-                    allowedContentTypes: [UTType.pdf, UTType.image, UTType.content],
-                    allowsMultipleSelection: true
-                ) { result in
-                    handleFileImport(result: result)
+                    Button(action: { isImportingPDF = true }) {
+                        Label("Add PDF / File", systemImage: "doc.fill.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.orange)
+                    .fileImporter(
+                        isPresented: $isImportingPDF,
+                        allowedContentTypes: [UTType.pdf, UTType.image, UTType.content],
+                        allowsMultipleSelection: true
+                    ) { result in
+                        handleFileImport(result: result)
+                    }
                 }
             }
 
@@ -64,7 +81,9 @@ struct AttachmentsView: View {
                 ContentUnavailableView(
                     "No Attachments",
                     systemImage: "paperclip.badge.ellipsis",
-                    description: Text("Upload photos or PDFs here to store them in Firebase Storage.")
+                    description: Text(isOwner
+                                      ? "Upload photos or PDFs here to store them in Firebase Storage."
+                                      : "Estate Owner hasn't uploaded any attachments yet.")
                 )
                 .frame(maxWidth: .infinity)
                 .listRowInsets(EdgeInsets())
@@ -73,7 +92,8 @@ struct AttachmentsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
                         ForEach(section.attachments) { attachment in
-                            AttachmentCard(attachment: attachment) {
+                            AttachmentCard(attachment: attachment,
+                                           allowDelete: isOwner) {
                                 Task {
                                     try? await repository.deleteAttachment(attachment, from: section)
                                 }
@@ -100,8 +120,10 @@ struct AttachmentsView: View {
     }
 }
 
+@MainActor
 struct AttachmentCard: View {
     let attachment: Attachment
+    let allowDelete: Bool
     let onDelete: () -> Void
     @State private var showDeleteConfirm = false
     @State private var image: UIImage?
@@ -111,49 +133,63 @@ struct AttachmentCard: View {
     }
 
     var body: some View {
-        Menu {
-            Button(role: .destructive, action: { showDeleteConfirm = true }) {
-                Label("Delete", systemImage: "trash")
+        cardContent
+            .confirmationDialog(
+                "Delete attachment?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive, action: onDelete)
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This will permanently remove the file from storage.")
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .topTrailing) {
-                    thumbnail
-                        .frame(width: 140, height: 140)
-                        .clipped()
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(.separator), lineWidth: 0.5)
-                        )
-                    badge
-                        .padding(6)
+    }
+
+    @ViewBuilder
+    private var cardContent: some View {
+        if allowDelete {
+            Menu {
+                Button(role: .destructive, action: { showDeleteConfirm = true }) {
+                    Label("Delete", systemImage: "trash")
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(attachment.fileName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .minimumScaleFactor(0.8)
-                        .padding(.trailing, 4)
-                    Text(formattedSize)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(width: 140, alignment: .leading)
+            } label: {
+                cardBody
             }
+            .buttonStyle(.plain)
+        } else {
+            cardBody
         }
-        .buttonStyle(.plain)
-        .confirmationDialog(
-            "Delete attachment?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive, action: onDelete)
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This will permanently remove the file from storage.")
+    }
+
+    @ViewBuilder
+    private var cardBody: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                thumbnail
+                    .frame(width: 140, height: 140)
+                    .clipped()
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(.separator), lineWidth: 0.5)
+                    )
+                badge
+                    .padding(6)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.fileName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .minimumScaleFactor(0.8)
+                    .padding(.trailing, 4)
+                Text(formattedSize)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 140, alignment: .leading)
         }
     }
 

@@ -24,9 +24,15 @@ struct SettingsView: View {
     @State private var confirmDeleteEstate: Bool = false
     @State private var errorMessage: String?
 
+    @State private var showDevRoleConfirm: EstateRole? = nil
+    @State private var showDevClearOverrideConfirm: Bool = false
+
     private var isOwner: Bool { appState.isOwner }
     private var currentEstateID: UUID? { appState.currentEstateID }
-    private var currentRole: EstateRole? { appState.currentRole }
+    private var currentRole: EstateRole? { appState.effectiveRole }
+    private var isRoleOverridden: Bool { appState.devOverrideRole != nil }
+    private var realRoleLabel: String { (appState.currentRole ?? .owner).rawValue.capitalized }
+    private var overrideRoleLabel: String { (appState.devOverrideRole ?? .owner).rawValue.capitalized }
 
     private var isEmailValid: Bool {
         let trimmed = newExecutorEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,6 +56,8 @@ struct SettingsView: View {
                         }
 
                         accountAndDataSection
+
+                        devToolsSection
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 32)
@@ -100,6 +108,33 @@ struct SettingsView: View {
                 Button("OK") { errorMessage = nil }
             } message: { msg in
                 Text(msg)
+            }
+            .alert(
+                "Simulate \(roleConfirmTitle(for: showDevRoleConfirm)) Role",
+                isPresented: .constant(showDevRoleConfirm != nil),
+                presenting: showDevRoleConfirm
+            ) { targetRole in
+                Button("Cancel", role: .cancel) { showDevRoleConfirm = nil }
+                Button("Switch to \(roleConfirmTitle(for: targetRole))", role: .destructive) {
+                    confirmSetOverrideRole(targetRole)
+                }
+            } message: { targetRole in
+                Text(confirmMsg(for: targetRole))
+            }
+            .alert(
+                "Stop Simulating Role",
+                isPresented: $showDevClearOverrideConfirm
+            ) {
+                Button("Cancel", role: .cancel) {}
+                Button("Revert to Real Role (\(realRoleLabel))") {
+                    confirmClearOverride()
+                }
+            } message: {
+                Text("""
+                The app will stop using the simulated role and revert to your actual estate role (\(realRoleLabel)).
+
+                Any role-gated UI (like "Estate Access & Executors" or Delete Estate) will reflect your real permissions again.
+                """)
             }
         }
     }
@@ -152,22 +187,34 @@ struct SettingsView: View {
     private var roleBadge: some View {
         if let role = currentRole {
             HStack(spacing: 6) {
+                if isRoleOverridden {
+                    Image(systemName: "wrench.and.screwdriver.fill")
+                        .foregroundStyle(.purple)
+                }
                 Image(systemName: role == .owner
                       ? "crown.fill"
                       : "briefcase.fill")
-                Text(role == .owner ? "Estate Owner" : "Executor")
+                Text(roleLabel(for: role) + (isRoleOverridden ? " (simulated)" : ""))
                     .font(.caption.weight(.semibold))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(role == .owner
-                          ? Color.orange.opacity(0.16)
-                          : Color.teal.opacity(0.16))
+                    .fill(isRoleOverridden
+                          ? Color.purple.opacity(0.16)
+                          : (role == .owner
+                             ? Color.orange.opacity(0.16)
+                             : Color.teal.opacity(0.16)))
             )
-            .foregroundStyle(role == .owner ? Color.orange : Color.teal)
+            .foregroundStyle(isRoleOverridden
+                             ? Color.purple
+                             : (role == .owner ? Color.orange : Color.teal))
         }
+    }
+
+    private func roleLabel(for role: EstateRole) -> String {
+        role == .owner ? "Estate Owner" : "Executor"
     }
 
     // MARK: - Estate Access (Owner)
@@ -557,6 +604,176 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Developer Tools
+
+    private var devToolsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                sectionHeader(title: "Developer Tools",
+                              systemImage: "hammer.fill",
+                              tint: .purple)
+                Spacer()
+                if isRoleOverridden {
+                    Text("SIMULATED")
+                        .font(.caption2.weight(.heavy))
+                        .tracking(1.2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.purple.opacity(0.16))
+                        )
+                        .foregroundStyle(.purple)
+                }
+            }
+
+            cardBackground {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Simulate role for UI testing")
+                            .font(.headline)
+                        Text("Instantly swaps the role used by role-gated UI (e.g. estate access, delete estate). Cloud RLS permissions and estate_access rows are NOT modified.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(spacing: 10) {
+                        roleToggleButton(role: .owner,
+                                         title: "Estate Owner",
+                                         symbol: "crown.fill",
+                                         tint: .orange)
+                        roleToggleButton(role: .executor,
+                                         title: "Executor",
+                                         symbol: "briefcase.fill",
+                                         tint: .teal)
+                    }
+
+                    if isRoleOverridden {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Simulating \(overrideRoleLabel) — your real role is still \(realRoleLabel)")
+                                        .font(.footnote.weight(.semibold))
+                                    Text("Any button that calls Supabase will still use your real cloud permissions and may fail.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.orange.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.orange.opacity(0.25), lineWidth: 0.8)
+                            )
+
+                            Button(action: { showDevClearOverrideConfirm = true }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    Text("Stop simulating & revert to real role")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.purple.opacity(0.14))
+                                )
+                                .foregroundStyle(.purple)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private func roleToggleButton(role: EstateRole,
+                                  title: String,
+                                  symbol: String,
+                                  tint: Color) -> some View {
+        let isSelected = (currentRole == role)
+        let isSelectedBecauseOverride = isSelected && isRoleOverridden
+        return Button(action: {
+            if isSelected {
+                // Already this effective role; no-op, but allow tapping anyway
+                // only to trigger the confirm if the user wants to re-confirm.
+            }
+            showDevRoleConfirm = role
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                if isSelectedBecauseOverride {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected
+                          ? tint.opacity(0.18)
+                          : Color(.tertiarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? tint.opacity(0.55) : Color(.separator).opacity(0.5),
+                            lineWidth: isSelected ? 1 : 0.6)
+            )
+            .foregroundStyle(isSelected ? tint : .primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func roleConfirmTitle(for role: EstateRole?) -> String {
+        guard let r = role else { return "Role" }
+        return roleLabel(for: r)
+    }
+
+    private func confirmMsg(for role: EstateRole) -> String {
+        let label = roleLabel(for: role)
+        return """
+        This simulates a \(label) view of the app for local UI testing only.
+
+        Important:
+        • The app will immediately render as if you are a \(label).
+        • Your real estate_access row and cloud RLS are not changed.
+        • Role-gated Supabase calls (e.g. generate invite code) will still use your real permissions and may fail.
+        • This override persists across app launches until you clear it.
+        """
+    }
+
+    private func confirmSetOverrideRole(_ role: EstateRole) {
+        showDevRoleConfirm = nil
+        appState.devSetRoleOverride(role)
+        // Refresh the executors list/sections so the UI re-renders with the
+        // new effective role (e.g. estateAccessSection appears if going to owner).
+        Task {
+            await reloadExecutorsIfOwner()
+        }
+    }
+
+    private func confirmClearOverride() {
+        showDevClearOverrideConfirm = false
+        appState.devSetRoleOverride(nil)
+        Task {
+            await reloadExecutorsIfOwner()
         }
     }
 
