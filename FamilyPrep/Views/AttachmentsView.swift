@@ -161,7 +161,7 @@ struct AttachmentCard: View {
     private var thumbnail: some View {
         switch attachmentType {
         case .photo:
-            if let url = attachmentDownloadURL, let img = image {
+            if let _ = attachmentDownloadURL, let img = image {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()

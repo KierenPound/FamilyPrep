@@ -8,7 +8,7 @@ struct RootContainerView: View {
     @State private var showWelcomeOwner: Bool = false
     @State private var showClaimInvite: Bool = false
     @State private var pendingOwnerEstateID: UUID?
-    @State private var bootstrapError: String?
+    @State private var actionError: String?
 
     var body: some View {
         ZStack {
@@ -57,22 +57,11 @@ struct RootContainerView: View {
             await bootstrap()
         }
         .alert(
-            "Setup failed",
-            isPresented: .constant(bootstrapError != nil),
-            presenting: bootstrapError
+            "Action failed",
+            isPresented: .constant(actionError != nil),
+            presenting: actionError
         ) { _ in
-            Button("Retry") {
-                bootstrapError = nil
-                Task { await bootstrap() }
-            }
-            Button("Continue Offline", role: .cancel) {
-                bootstrapError = nil
-                if let eid = pendingOwnerEstateID {
-                    appState.phase = .welcomeOwner(estateID: eid)
-                } else {
-                    appState.phase = .onboardingRequired
-                }
-            }
+            Button("OK") { actionError = nil }
         } message: { msg in
             Text(msg)
         }
@@ -94,13 +83,32 @@ struct RootContainerView: View {
     }
 
     private func handleSetupEstate() {
+        let service = SupabaseVaultService.shared
+        let offlineFallbackID = pendingOwnerEstateID ?? UUID()
+
+        // If Supabase isn't configured at all, jump straight to offline owner-welcome
+        // with a local UUID. No cloud sync will occur until SPM/Info.plist is set up.
+        guard service.isConfigured else {
+            pendingOwnerEstateID = offlineFallbackID
+            appState.completeOwnerWelcome(estateID: offlineFallbackID)
+            return
+        }
+
         Task {
             do {
-                let estateID = try await SupabaseVaultService.shared.createDefaultOwnerEstate()
+                let estateID = try await service.createDefaultOwnerEstate()
                 pendingOwnerEstateID = estateID
-                appState.phase = .welcomeOwner(estateID: estateID)
+                appState.showOwnerWelcome(estateID: estateID)
             } catch {
-                bootstrapError = error.localizedDescription
+                // First-launch cloud operations can fail for many benign reasons
+                // (RLS policies not yet bootstrapped, no auth session, offline).
+                // Don't block the user: fall back to a local UUID and let them
+                // proceed; cloud operations will be attempted again from Settings
+                // once Supabase sign-in + RLS are wired up.
+                print("ℹ️ createDefaultOwnerEstate fell back to local mode: \(error.localizedDescription)")
+                let localID = pendingOwnerEstateID ?? UUID()
+                pendingOwnerEstateID = localID
+                appState.showOwnerWelcome(estateID: localID)
             }
         }
     }

@@ -17,17 +17,13 @@ final class FirebaseService {
 
     private func configureIfAvailable() {
         #if canImport(FirebaseCore) && canImport(FirebaseFirestore) && canImport(FirebaseStorage)
-        do {
-            FirebaseApp.configure()
-            _ = Firestore.firestore()
-            _ = Storage.storage()
-            isConfigured = true
-            firestoreEnabled = true
-            storageEnabled = true
-            print("✅ Firebase configured successfully")
-        } catch {
-            print("⚠️ Firebase not configured: \(error.localizedDescription). Using local storage only.")
-        }
+        FirebaseApp.configure()
+        _ = Firestore.firestore()
+        _ = Storage.storage()
+        isConfigured = true
+        firestoreEnabled = true
+        storageEnabled = true
+        print("✅ Firebase configured successfully")
         #else
         print("⚠️ Firebase SDK not installed. To enable cross-platform sync:")
         print("   1. Add Firestore & Storage via SPM: https://github.com/firebase/firebase-ios-sdk")
@@ -42,7 +38,7 @@ final class FirebaseService {
         guard firestoreEnabled else { return }
         #if canImport(FirebaseFirestore)
         let db = Firestore.firestore()
-        var data: [String: Any] = [
+        let data: [String: Any] = [
             "id": section.id,
             "title": section.title,
             "orderIndex": section.orderIndex,

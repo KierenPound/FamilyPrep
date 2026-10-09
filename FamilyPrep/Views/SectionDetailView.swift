@@ -318,8 +318,7 @@ struct SectionDetailView: View {
 
     private var footerSection: some View {
         VStack(spacing: 6) {
-            Text("All data stored locally. When Firebase is configured,")
-            + Text(" changes sync instantly across iOS and Android.")
+            Text("All data stored locally. When Firebase is configured,\nchanges sync instantly across iOS and Android.")
         }
         .font(.caption)
         .foregroundStyle(.tertiary)

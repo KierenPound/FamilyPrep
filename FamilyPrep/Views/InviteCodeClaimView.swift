@@ -201,11 +201,17 @@ struct InviteCodeClaimView: View {
     // MARK: - Actions
 
     private func claimTapped() {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Invite codes require Family Prep cloud. Ask the Estate Owner for the code once the cloud vault is enabled."
+            withAnimation(.default) { shakeTrigger.toggle() }
+            return
+        }
         Task {
             isClaiming = true
             defer { isClaiming = false }
             do {
-                let estateID = try await SupabaseVaultService.shared.claimExecutorInviteCode(code)
+                let estateID = try await service.claimExecutorInviteCode(code)
                 onClaimed(estateID)
             } catch {
                 errorMessage = error.localizedDescription

@@ -361,11 +361,16 @@ struct WelcomeOwnerView: View {
     // MARK: - Actions
 
     private func generateInviteTapped() {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Cloud vault not configured. Install the supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist, or skip this step and continue offline."
+            return
+        }
         Task {
             isGenerating = true
             defer { isGenerating = false }
             do {
-                let invite = try await SupabaseVaultService.shared.generateExecutorInvite(
+                let invite = try await service.generateExecutorInvite(
                     estateID: estateID,
                     email: executorEmail
                 )

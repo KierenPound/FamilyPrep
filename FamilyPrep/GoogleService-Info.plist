@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.kieren.familyprep</string>
+	<string>com.kieren.FamilyPrep</string>
 	<key>PROJECT_ID</key>
 	<string>family-prep-app</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:469632901031:ios:63e3b87dfc0fc964366082</string>
+	<string>1:469632901031:ios:c109814f41e3dd82366082</string>
 </dict>
 </plist>

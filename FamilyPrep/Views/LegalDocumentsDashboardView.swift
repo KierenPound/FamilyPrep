@@ -67,6 +67,9 @@ struct LegalDocumentsDashboardView: View {
     @State private var selectedWill: WillDoc?
     @State private var selectedLegalPhoto: LegalPhotoDoc?
 
+    @State private var willsCardWidth: CGFloat = 320
+    @State private var deedsCardWidth: CGFloat = 320
+
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
             photosSection
@@ -74,7 +77,6 @@ struct LegalDocumentsDashboardView: View {
             houseDeedsSection
             songSection
         }
-        .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 4)
         .padding(.bottom, 4)
         .sheet(item: $selectedHouseDeed) { doc in
@@ -150,9 +152,11 @@ struct LegalDocumentsDashboardView: View {
                           tint: .purple)
 
             cardBackground {
+                let tileSide = max(60, (willsCardWidth - 32 - 12) / 2)
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Thorntons hold the master document. There will be paper copies in the bureau, in the sitting room.  Both of you are the executors")
                         .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Divider()
 
@@ -185,70 +189,84 @@ struct LegalDocumentsDashboardView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
+                        .fixedSize(horizontal: false, vertical: true)
 
                         HStack(alignment: .top, spacing: 12) {
                             ForEach(wills) { doc in
-                                willThumbnail(doc)
+                                willThumbnail(doc, tileSide: tileSide)
+                                    .frame(width: tileSide)
                             }
                         }
                     }
                 }
                 .padding(16)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { willsCardWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, newValue in willsCardWidth = newValue }
+                    }
+                )
             }
         }
     }
 
-    private func willThumbnail(_ doc: WillDoc) -> some View {
+    private func willThumbnail(_ doc: WillDoc, tileSide: CGFloat) -> some View {
         Button(action: {
             selectedWill = doc
         }) {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .bottomTrailing) {
-                    Image(doc.assetName)
-                        .resizable()
-                        .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 70)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        .cornerRadius(8)
-                        .contentShape(Rectangle())
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.6)
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    Color(.quaternarySystemFill)
+                    if let pdfURL = PDFLoader.url(for: doc.assetName),
+                       let pdfDoc = PDFDocument(url: pdfURL),
+                       let page = pdfDoc.page(at: 0) {
+                        let thumb = page.thumbnail(
+                            of: CGSize(width: tileSide * 3, height: tileSide * 3),
+                            for: .cropBox
                         )
-
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(doc.accent)
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "doc.richtext.fill")
+                                .font(.system(size: 44, weight: .light))
+                                .foregroundStyle(doc.accent)
+                            Text("Loading…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .padding(6)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: tileSide, height: tileSide)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(doc.accent.opacity(0.45), lineWidth: 0.7)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
-                        .lineLimit(2)
+                        .lineLimit(2, reservesSpace: false)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.viewfinder")
-                            .font(.system(size: 10))
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.richtext")
+                            .font(.system(size: 11))
                         Text("Tap to open PDF")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                     }
                     .foregroundStyle(doc.accent)
                 }
-                .padding(.horizontal, 1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: tileSide, alignment: .leading)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -263,9 +281,11 @@ struct LegalDocumentsDashboardView: View {
                           tint: .brown)
 
             cardBackground {
+                let tileSide = max(60, (deedsCardWidth - 32 - 12) / 2)
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Below are the official title sheets and plans from Scotland Land Information Service")
                         .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Divider()
 
@@ -276,72 +296,105 @@ struct LegalDocumentsDashboardView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    LazyVGrid(
-                        columns: twoColumnGrid,
-                        spacing: 12
-                    ) {
-                        ForEach(houseDeeds) { doc in
-                            houseDeedThumbnail(doc)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            if houseDeeds.indices.contains(0) {
+                                houseDeedThumbnail(houseDeeds[0], tileSide: tileSide)
+                                    .frame(width: tileSide)
+                            }
+                            if houseDeeds.indices.contains(1) {
+                                houseDeedThumbnail(houseDeeds[1], tileSide: tileSide)
+                                    .frame(width: tileSide)
+                            }
+                        }
+                        HStack(alignment: .top, spacing: 12) {
+                            if houseDeeds.indices.contains(2) {
+                                houseDeedThumbnail(houseDeeds[2], tileSide: tileSide)
+                                    .frame(width: tileSide)
+                            }
+                            if houseDeeds.indices.contains(3) {
+                                houseDeedThumbnail(houseDeeds[3], tileSide: tileSide)
+                                    .frame(width: tileSide)
+                            }
+                        }
+                        HStack(alignment: .top, spacing: 12) {
+                            if houseDeeds.indices.contains(4) {
+                                houseDeedThumbnail(houseDeeds[4], tileSide: tileSide)
+                                    .frame(width: tileSide)
+                            }
                         }
                     }
                 }
                 .padding(16)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { deedsCardWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, newValue in deedsCardWidth = newValue }
+                    }
+                )
             }
         }
     }
 
-    private func houseDeedThumbnail(_ doc: HouseDeedDoc) -> some View {
+    private func houseDeedThumbnail(_ doc: HouseDeedDoc, tileSide: CGFloat) -> some View {
         Button(action: {
             selectedHouseDeed = doc
         }) {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .bottomTrailing) {
-                    Image(doc.assetName)
-                        .resizable()
-                        .aspectRatio(1.33, contentMode: .fill)
-                        .frame(height: 70)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        .cornerRadius(8)
-                        .contentShape(Rectangle())
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(doc.accent.opacity(0.35), lineWidth: 0.6)
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    Color(.quaternarySystemFill)
+                    if let pdfURL = PDFLoader.url(for: doc.assetName),
+                       let pdfDoc = PDFDocument(url: pdfURL),
+                       let page = pdfDoc.page(at: 0) {
+                        let thumb = page.thumbnail(
+                            of: CGSize(width: tileSide * 3, height: tileSide * 3),
+                            for: .cropBox
                         )
-
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(doc.accent)
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "doc.richtext.fill")
+                                .font(.system(size: 44, weight: .light))
+                                .foregroundStyle(doc.accent)
+                            Text("Loading…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .padding(6)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: tileSide, height: tileSide)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(doc.accent.opacity(0.45), lineWidth: 0.7)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(doc.displayTitle)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
-                        .lineLimit(2)
+                        .lineLimit(2, reservesSpace: false)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.viewfinder")
-                            .font(.system(size: 10))
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.richtext")
+                            .font(.system(size: 11))
                         Text("Tap to open PDF")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                     }
                     .foregroundStyle(doc.accent)
                 }
-                .padding(.horizontal, 1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: tileSide, alignment: .leading)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -384,11 +437,12 @@ struct LegalDocumentsDashboardView: View {
 
     @ViewBuilder
     private func fullscreenHouseDeedViewer(for doc: HouseDeedDoc) -> some View {
-        if let pdfURL = Bundle.main.url(forResource: doc.assetName, withExtension: "pdf") {
+        if let pdfURL = PDFLoader.url(for: doc.assetName) {
             PDFKitViewerSheet(url: pdfURL, title: doc.displayTitle, onClose: { selectedHouseDeed = nil })
-        } else if let fallback = HouseDeedPDFLoader.url(forAssetNamed: doc.assetName) {
-            PDFKitViewerSheet(url: fallback, title: doc.displayTitle, onClose: { selectedHouseDeed = nil })
         } else {
+            // No PDF embedded in the bundle for this deed; fall back to the
+            // same image asset that the thumbnail uses so the user sees a
+            // large, zoomable view of the content regardless.
             imageFallbackViewer(for: doc)
         }
     }
@@ -396,17 +450,25 @@ struct LegalDocumentsDashboardView: View {
     private func imageFallbackViewer(for doc: HouseDeedDoc) -> some View {
         NavigationStack {
             GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    Color.black.ignoresSafeArea()
+                let viewportW = max(320, min(geo.size.width.isFinite ? geo.size.width : 0, 3840))
+                let viewportH = max(320, min(geo.size.height.isFinite ? geo.size.height : 0, 2160))
+                ZStack {
+                    // Paper-white neutral background matches PDF look; fills safe area
+                    Color(.secondarySystemBackground).ignoresSafeArea()
 
-                    ScrollView([.vertical, .horizontal]) {
+                    // Single axis (vertical) scroll + fit width = the classic
+                    // document scroll behavior. A landscape 4:3 Title Plan fills
+                    // 100% of screen WIDTH (no black void), and the user just
+                    // scrolls down if needed for legend.
+                    ScrollView(.vertical, showsIndicators: true) {
                         Image(doc.assetName)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
-                            .padding(16)
+                            .frame(maxWidth: viewportW)
+                            .frame(width: viewportW)
+                            .padding(.vertical, 8)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(width: viewportW, height: viewportH)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -420,15 +482,17 @@ struct LegalDocumentsDashboardView: View {
                     Button {
                         selectedHouseDeed = nil
                     } label: {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.headline)
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(.white)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule().fill(.white.opacity(0.12))
-                            )
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle.fill")
+                            Text("Close")
+                                .font(.subheadline.bold())
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Capsule().fill(.white.opacity(0.12))
+                        )
                     }
                 }
             }
@@ -437,34 +501,30 @@ struct LegalDocumentsDashboardView: View {
     }
 
     private func fullscreenWillViewer(for doc: WillDoc) -> some View {
-        if let pdfURL = Bundle.main.url(forResource: doc.assetName, withExtension: "pdf") {
-            AnyView(
+        if let pdfURL = PDFLoader.url(for: doc.assetName) {
+            return AnyView(
                 PDFKitViewerSheet(url: pdfURL,
                                   title: doc.displayTitle,
                                   onClose: { selectedWill = nil })
             )
-        } else if let fallbackURL = HouseDeedPDFLoader.url(forAssetNamed: doc.assetName) {
-            AnyView(
-                PDFKitViewerSheet(url: fallbackURL,
-                                  title: doc.displayTitle,
-                                  onClose: { selectedWill = nil })
-            )
         } else {
-            AnyView(
+            return AnyView(
                 NavigationStack {
                     GeometryReader { geo in
-                        ZStack(alignment: .top) {
-                            Color.black.ignoresSafeArea()
+                        let viewportW = max(320, min(geo.size.width.isFinite ? geo.size.width : 0, 3840))
+                        let viewportH = max(320, min(geo.size.height.isFinite ? geo.size.height : 0, 2160))
+                        ZStack {
+                            Color(.secondarySystemBackground).ignoresSafeArea()
 
-                            ScrollView([.vertical, .horizontal]) {
+                            ScrollView(.vertical, showsIndicators: true) {
                                 Image(doc.assetName)
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(maxWidth: geo.size.width - 32,
-                                           maxHeight: geo.size.height - 32)
-                                    .padding(16)
+                                    .frame(maxWidth: viewportW)
+                                    .frame(width: viewportW)
+                                    .padding(.vertical, 8)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(width: viewportW, height: viewportH)
                         }
                     }
                     .navigationBarTitleDisplayMode(.inline)
@@ -472,25 +532,29 @@ struct LegalDocumentsDashboardView: View {
                         ToolbarItem(placement: .principal) {
                             Text(doc.displayTitle)
                                 .font(.headline)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.primary)
                         }
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
                                 selectedWill = nil
                             } label: {
-                                Label("Close", systemImage: "xmark.circle.fill")
-                                    .font(.headline)
-                                    .labelStyle(.titleAndIcon)
-                                    .foregroundStyle(.white)
-                                    .padding(.vertical, 6)
-                                    .padding(.horizontal, 12)
-                                    .background(
-                                        Capsule().fill(.white.opacity(0.12))
-                                    )
+                                HStack(spacing: 6) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(.secondary)
+                                    Text("Close")
+                                        .font(.subheadline.bold())
+                                }
+                                .foregroundStyle(.primary)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 12)
+                                .background(
+                                    Capsule().fill(.quaternary)
+                                )
                             }
                         }
                     }
-                    .toolbarBackground(.hidden, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
                 }
             )
         }
@@ -499,17 +563,20 @@ struct LegalDocumentsDashboardView: View {
     private func fullscreenLegalPhotoViewer(for doc: LegalPhotoDoc) -> some View {
         NavigationStack {
             GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    Color.black.ignoresSafeArea()
+                let viewportW = max(320, min(geo.size.width.isFinite ? geo.size.width : 0, 3840))
+                let viewportH = max(320, min(geo.size.height.isFinite ? geo.size.height : 0, 2160))
+                ZStack {
+                    Color(.secondarySystemBackground).ignoresSafeArea()
 
-                    ScrollView([.vertical, .horizontal]) {
+                    ScrollView(.vertical, showsIndicators: true) {
                         Image(doc.assetName)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: geo.size.width - 32, maxHeight: geo.size.height - 32)
-                            .padding(16)
+                            .frame(maxWidth: viewportW)
+                            .frame(width: viewportW)
+                            .padding(.vertical, 8)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(width: viewportW, height: viewportH)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -517,27 +584,29 @@ struct LegalDocumentsDashboardView: View {
                 ToolbarItem(placement: .principal) {
                     Text(doc.displayTitle)
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         selectedLegalPhoto = nil
                     } label: {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.headline)
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(.white)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule().fill(.white.opacity(0.12))
-                            )
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle.fill")
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.secondary)
+                            Text("Close")
+                                .font(.subheadline.bold())
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Capsule().fill(.quaternary)
+                        )
                     }
                 }
             }
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 
@@ -619,6 +688,215 @@ struct LegalDocumentsDashboardView: View {
 
 // MARK: - PDFKit Fullscreen Viewer (SwiftUI -> UIKit)
 
+// MARK: - PDF Locator — robustly finds PDFs ANYWHERE inside the app,
+// including loose bundle files, PDFs embedded in xcassets as Data Sets
+// (read via NSDataAsset then written to a temp file URL), and PDFs
+// dragged into the project folder hierarchy.
+
+private enum PDFLoader {
+
+    private static var catalogDumped = false
+
+    static func url(for assetName: String) -> URL? {
+        dumpAssetCatalogOnceIfNeeded()
+
+        let normalized = normalize(assetName)
+
+        // 1) Loose bundle PDFs via url(forResource)
+        if let loose = Bundle.main.url(forResource: assetName, withExtension: "pdf") {
+            print("📄🟢 [1/loose] matched '\(assetName)' → \(loose.lastPathComponent)")
+            return loose
+        }
+        if let looseNoExt = Bundle.main.url(forResource: assetName, withExtension: nil),
+           looseNoExt.pathExtension.lowercased() == "pdf" {
+            print("📄🟢 [1b/loose no-ext] '\(assetName)' → \(looseNoExt.lastPathComponent)")
+            return looseNoExt
+        }
+
+        // 2) NSDataAsset — for when PDFs are Data-Set assets inside Assets.xcassets
+        //    compiled into Assets.car.
+        let snakeName = assetName.replacingOccurrences(of: " ", with: "_")
+        let dashCompactName = assetName.replacingOccurrences(of: " - ", with: "-")
+        let dataAssetVariants: [String] = [
+            assetName, "\(assetName).pdf", snakeName, "\(snakeName).pdf",
+            dashCompactName, "\(dashCompactName).pdf",
+            assetName.lowercased(), "\(assetName.lowercased()).pdf",
+            assetName.replacingOccurrences(of: "–", with: "-"),
+            assetName.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+        ]
+        for candidate in dataAssetVariants {
+            if let dataAsset = NSDataAsset(name: candidate) {
+                if let url = writeAssetDataToTempCache(data: dataAsset.data, assetName: assetName) {
+                    print("📄🟢 [2/NSDataAsset] matched '\(candidate)' → temp \(url.lastPathComponent)")
+                    return url
+                }
+            }
+        }
+
+        // 2.5) UIImage + PDF renderer — for PDFs stored as .imageset (vector PDF
+        //      inside Assets.car imageset). NSDataAsset can't see these, but
+        //      UIImage(named:) renders them perfectly. We re-rasterize the
+        //      loaded image into a new PDF document so the full PDFKit viewer
+        //      (pinch-zoom, page swipe, etc.) is still used instead of the
+        //      image-only fallback viewer.
+        if let uiImage = UIImage(named: assetName) {
+            let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: uiImage.size))
+            let pdfData = renderer.pdfData { context in
+                context.beginPage()
+                uiImage.draw(in: CGRect(origin: .zero, size: uiImage.size))
+            }
+            if let url = writeAssetDataToTempCache(data: pdfData, assetName: assetName) {
+                print("📄🟢 [2.5/imageset→PDF] '\(assetName)' loaded from imageset and rendered to PDFKit-compatible data")
+                return url
+            }
+        }
+
+        // 3) Deep-file-deep: recurse every file in bundle.
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let fm = FileManager.default
+        let enumerator = fm.enumerator(
+            at: resourceURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .nameKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        var fuzzyCandidates: [URL] = []
+        while let url = enumerator?.nextObject() as? URL {
+            let rv = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            guard rv?.isRegularFile == true else { continue }
+            guard url.pathExtension.lowercased() == "pdf" else { continue }
+            let fname = url.deletingPathExtension().lastPathComponent
+            if fname.lowercased() == assetName.lowercased() { print("📄🟢 [3/deep exact]: '\(assetName)' → \(url.lastPathComponent)"); return url }
+            if normalize(fname) == normalized { print("📄🟢 [3/deep norm]: '\(assetName)' → \(url.lastPathComponent)"); return url }
+            fuzzyCandidates.append(url)
+        }
+
+        // 4) Fuzzy contains
+        for url in fuzzyCandidates {
+            let nFname = normalize(url.deletingPathExtension().lastPathComponent)
+            if nFname.contains(normalized) || normalized.contains(nFname) {
+                print("📄🟢 [4/fuzzy]: '\(assetName)' → \(url.lastPathComponent)")
+                return url
+            }
+        }
+
+        print("📄🔴 ALL PDF FALLBACK (image viewer): '\(assetName)' — no PDF found in bundle or Assets. "
+              + "See discovered names above in '💼 AssetCatalog dump'.")
+        return nil
+    }
+
+    // MARK: - Helpers
+
+    /// Called once per app launch. Walks the bundle and prints
+    /// all PDFs discovered + tries NSDataAsset name attempts so we can
+    /// see what the actual Assets.car catalog naming is.
+    private static func dumpAssetCatalogOnceIfNeeded() {
+        guard !catalogDumped else { return }
+        catalogDumped = true
+
+        print("\n💼 PDFLoader — AssetCatalog Dump {")
+        defer { print("}\n") }
+
+        // --- 1) Loose PDFs anywhere in the bundle:
+        var pdfList: [URL] = []
+        if let r = Bundle.main.resourceURL,
+           let enumerator = FileManager.default.enumerator(
+               at: r,
+               includingPropertiesForKeys: [.isRegularFileKey, .nameKey],
+               options: [.skipsHiddenFiles]
+           ) {
+            while let u = enumerator.nextObject() as? URL {
+                guard (try? u.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+                if u.pathExtension.lowercased() == "pdf" { pdfList.append(u) }
+            }
+        }
+        print("  📁 loose PDFs found = \(pdfList.count):")
+        for u in pdfList { print("     · \(u.lastPathComponent)") }
+        if pdfList.isEmpty { print("     (none)") }
+
+        // 2) Try the ACTUAL asset names used in the model data (exact names
+        //    that live inside the .imageset folders in Assets.xcassets):
+        let testNames = [
+            "PTH11996 - Title sheet",
+            "PTH11996 - Title Plan",
+            "PTH30329 - Title sheet",
+            "PTH30329 - Title Plan (A4 Print Version)",
+            "PTH30329 - Title Plan (A0 Viewing Version)",
+            "Will Style A - Mrs Brenda Mary Pound (Master)",
+            "Will Style A - Mr Kieren Matthew Pound (Master)"
+        ]
+        let tryVariants: (String) -> [String] = { name in
+            [name, "\(name).pdf",
+             name.replacingOccurrences(of: " ", with: "_"),
+             name.lowercased()]
+        }
+        print("  🔎 NSDataAsset name attempts (matches only):")
+        var foundAnyDataAsset = false
+        for n in testNames {
+            for v in tryVariants(n) {
+                if NSDataAsset(name: v) != nil {
+                    print("    ✅ '\(v)' EXISTS")
+                    foundAnyDataAsset = true
+                }
+            }
+        }
+        if !foundAnyDataAsset { print("    (none — PDFs are stored as .imageset, not .dataset; expected)") }
+
+        // 3) UIImage probes — these match .imageset assets (which is how all
+        //    current PDFs are stored). Confirms the Tier 2.5 imageset→PDF
+        //    pipeline will succeed for every listed document.
+        print("  🖼️  UIImage (imageset) name attempts:")
+        for n in testNames {
+            if UIImage(named: n) != nil {
+                print("    ✅ '\(n)' — imageset asset OK")
+            } else {
+                print("    ❌ '\(n)' — NOT FOUND")
+            }
+        }
+    }
+
+    private static func writeAssetDataToTempCache(data: Data, assetName: String) -> URL? {
+        let fm = FileManager.default
+        do {
+            let caches = try fm.url(for: .cachesDirectory,
+                                     in: .userDomainMask,
+                                     appropriateFor: nil,
+                                     create: true)
+            let safeName = assetName
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+            let dirURL = caches.appendingPathComponent("FamilyPrep_PDFs", isDirectory: true)
+            if !fm.fileExists(atPath: dirURL.path) {
+                try fm.createDirectory(at: dirURL, withIntermediateDirectories: true)
+            }
+            let fileURL = dirURL.appendingPathComponent("\(safeName).pdf")
+            if fm.fileExists(atPath: fileURL.path),
+               let existing = try? Data(contentsOf: fileURL),
+               existing.count == data.count {
+                return fileURL
+            }
+            try data.write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            print("⚠️ PDFLoader temp-write failed for '\(assetName)': \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func normalize(_ s: String) -> String {
+        var chars: [Character] = []
+        for c in s.lowercased() {
+            switch c {
+            case " ", "-", "_", "–", "—", ".", "(", ")", "[", "]", "{", "}", " ", "/", ":", ";":
+                continue
+            default:
+                chars.append(c)
+            }
+        }
+        return String(chars)
+    }
+}
+
 private struct PDFKitViewerSheet: View {
     let url: URL
     let title: String
@@ -650,18 +928,21 @@ private struct PDFKitViewerSheet: View {
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onClose) {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.headline)
-                            .labelStyle(.titleAndIcon)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule().fill(.quaternary)
-                            )
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle.fill")
+                            Text("Close")
+                                .font(.subheadline.bold())
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Capsule().fill(.quaternary)
+                        )
                     }
                 }
             }
         }
+        .onAppear { print("📖 PDF viewer opened: \(url.lastPathComponent)") }
     }
 }
 
@@ -671,38 +952,44 @@ private struct PDFKitViewRepresented: UIViewRepresentable {
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
         pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.usePageViewController(true, withViewOptions: [UIPageViewController.OptionsKey.interPageSpacing: 8])
-        pdfView.displaysPageBreaks = true
-        pdfView.pageBreakMargins = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         pdfView.backgroundColor = .systemGroupedBackground
-        pdfView.document = PDFDocument(url: url)
+        pdfView.minScaleFactor = 0.1
+        pdfView.maxScaleFactor = 10.0
+        pdfView.displayDirection = .horizontal
+        pdfView.displaysPageBreaks = true
+        pdfView.pageBreakMargins = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        // Page view controller = swipe horizontally between pages like iBooks,
+        // and critically: every page (A4 portrait, A0 landscape, anything)
+        // auto-fits the screen exactly once on first load — matches the
+        // original working PDF viewer behavior before we accidentally broke
+        // it with singlePageContinuous vertical mode.
+        pdfView.usePageViewController(true, withViewOptions: [
+            UIPageViewController.OptionsKey.interPageSpacing: 16
+        ])
+
+        if let doc = PDFDocument(url: url) {
+            pdfView.document = doc
+            print("✅ PDF loaded OK: \(url.lastPathComponent) — pages = \(doc.pageCount)")
+        } else {
+            // PDFDocument(url:) sometimes rejects valid PDFs that are in
+            // temp directories (sandbox path access). Retry with a Data
+            // read which bypasses path-based security bookmarks.
+            do {
+                let data = try Data(contentsOf: url)
+                if let doc2 = PDFDocument(data: data) {
+                    pdfView.document = doc2
+                    print("✅ PDF loaded via Data fallback: \(url.lastPathComponent) — pages = \(doc2.pageCount)")
+                } else {
+                    print("❌ PDFDocument(url:) + PDFDocument(data:) BOTH returned nil for: \(url.lastPathComponent)")
+                }
+            } catch {
+                print("❌ PDF load failed: \(error.localizedDescription)")
+            }
+        }
         return pdfView
     }
 
     func updateUIView(_ uiView: PDFView, context: Context) {}
-}
-
-// MARK: - House Deed PDF Locator (bundle or asset catalog fallback paths)
-
-private enum HouseDeedPDFLoader {
-    static func url(forAssetNamed name: String) -> URL? {
-        if let loose = Bundle.main.url(forResource: name, withExtension: "pdf") {
-            return loose
-        }
-        let resourceRoot = Bundle.main.resourceURL ?? URL(fileURLWithPath: "")
-        let candidates = [
-            resourceRoot.appendingPathComponent("\(name).pdf"),
-            resourceRoot.appendingPathComponent("Assets.car"),
-            resourceRoot.appendingPathComponent("\(name).imageset/\(name).pdf")
-        ]
-        for url in candidates {
-            if FileManager.default.fileExists(atPath: url.path), url.pathExtension.lowercased() == "pdf" {
-                return url
-            }
-        }
-        return nil
-    }
 }
 
 #Preview {

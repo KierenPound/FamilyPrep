@@ -221,6 +221,35 @@ class LocalDataRepository: DataRepositoryProtocol, ObservableObject {
         try await syncSectionToFirebase(section)
     }
 
+    // MARK: - Global Reset (Account & Data Management)
+
+    func deleteAllLocalData() throws {
+        let fm = FileManager.default
+
+        let docs = try fm.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+
+        // 1. Persistence file
+        let persistenceURL = docs.appendingPathComponent(persistenceFileName)
+        if fm.fileExists(atPath: persistenceURL.path) {
+            try fm.removeItem(at: persistenceURL)
+        }
+
+        // 2. Attachments directory (attachments/<sectionId>/<file>)
+        let attachmentsDir = docs.appendingPathComponent("attachments", isDirectory: true)
+        if fm.fileExists(atPath: attachmentsDir.path) {
+            try fm.removeItem(at: attachmentsDir)
+        }
+
+        // 3. In-memory state
+        sections = []
+        errorMessage = nil
+    }
+
     // MARK: - Checklist Items
 
     func addChecklistItem(to section: PrepSection, text: String) async throws {

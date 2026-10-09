@@ -59,6 +59,12 @@ final class AppState {
         phase = .onboarded(estateID: estateID, role: .executor)
     }
 
+    func showOwnerWelcome(estateID: UUID) {
+        currentEstateID = estateID
+        currentRole = .owner
+        phase = .welcomeOwner(estateID: estateID)
+    }
+
     func resetToOnboarding() {
         currentEstateID = nil
         currentRole = nil

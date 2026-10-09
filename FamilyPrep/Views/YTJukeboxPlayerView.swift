@@ -94,7 +94,9 @@ struct YTJukeboxPlayerView: UIViewRepresentable {
         coord.lastLoadedID = cleanID
         coord.lastIsPlaying = isPlaying
         coord.lastForcePlayID = forcePlayID
-        webView.evaluateJavaScript(js, completionHandler: nil)
+        Task { @MainActor in
+            _ = try? await webView.evaluateJavaScript(js)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -219,13 +221,15 @@ struct YTJukeboxPlayerView: UIViewRepresentable {
                   } catch(e) { return false; }
                 })();
                 """
-                webView?.evaluateJavaScript(retryJS, completionHandler: nil)
+                Task { @MainActor in
+                    _ = try? await webView?.evaluateJavaScript(retryJS)
+                }
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     guard Task.isCancelled == false else { return }
                     if self.awaitingPlayingConfirmationID == videoID, self.lastIsPlaying == true {
                         let finalJS = "if (typeof player !== 'undefined' && player && player.playVideo) { player.playVideo(); }"
-                        webView?.evaluateJavaScript(finalJS, completionHandler: nil)
+                        _ = try? await webView?.evaluateJavaScript(finalJS)
                     }
                 }
             }

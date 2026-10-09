@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appState) private var appState
+    @EnvironmentObject private var repository: LocalDataRepository
 
     @State private var userEmail: String?
     @State private var userDisplayName: String?
@@ -597,10 +598,15 @@ struct SettingsView: View {
 
     private func reloadExecutorsIfOwner() async {
         guard isOwner, let eid = currentEstateID else { return }
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            executors = []
+            return
+        }
         isLoadingExecutors = true
         defer { isLoadingExecutors = false }
         do {
-            executors = try await SupabaseVaultService.shared.fetchExecutors(for: eid)
+            executors = try await service.fetchExecutors(for: eid)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -614,11 +620,16 @@ struct SettingsView: View {
 
     private func generateAdditionalInvite() {
         guard let eid = currentEstateID else { return }
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Cloud vault not configured. Add supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist."
+            return
+        }
         Task {
             isGeneratingInvite = true
             defer { isGeneratingInvite = false }
             do {
-                let invite = try await SupabaseVaultService.shared.generateExecutorInvite(
+                let invite = try await service.generateExecutorInvite(
                     estateID: eid,
                     email: newExecutorEmail
                 )
@@ -631,9 +642,14 @@ struct SettingsView: View {
     }
 
     private func revoke(_ exec: EstateAccessRecord) {
+        let service = SupabaseVaultService.shared
+        guard service.isConfigured else {
+            errorMessage = "Cloud vault not configured — cannot revoke access offline."
+            return
+        }
         Task {
             do {
-                try await SupabaseVaultService.shared.revokeExecutorAccess(exec.id)
+                try await service.revokeExecutorAccess(exec.id)
                 await reloadExecutorsIfOwner()
             } catch {
                 errorMessage = error.localizedDescription
@@ -643,11 +659,15 @@ struct SettingsView: View {
 
     private func handleDeleteAccount() {
         guard let eid = currentEstateID else { return }
+        let service = SupabaseVaultService.shared
         Task {
             isDeletingAccount = true
             defer { isDeletingAccount = false }
             do {
-                try await SupabaseVaultService.shared.deleteEstateAndAllData(estateID: eid)
+                if service.isConfigured {
+                    try await service.deleteEstateAndAllData(estateID: eid)
+                }
+                try repository.deleteAllLocalData()
                 appState.resetToOnboarding()
                 dismiss()
             } catch {

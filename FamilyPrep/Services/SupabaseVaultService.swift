@@ -22,10 +22,42 @@
 //      • Key: "SUPABASE_ANON_KEY"  Type: String  Value: <anon key, NOT service_role>
 //    NEVER commit the service_role key to source control.
 //
+//  NOTES ON supabase-swift 2.x POSTGREST ARCHITECTURE (2.55.3):
+//    • select/insert/update/delete ALL live on PostgrestQueryBuilder.
+//    • They return a PostgrestFilterBuilder for filter chaining.
+//    • insert(_:) and update(_:) throw (they encode values eagerly).
+//    • delete() does NOT throw.
+//    • execute() lives on the PostgrestBuilder base class:
+//        func execute() async throws -> PostgrestResponse<Void>              // discard body
+//        func execute<T: Decodable>() async throws -> PostgrestResponse<T>   // typed decode
+//    • PostgrestFilterBuilder inherits from PostgrestTransformBuilder,
+//      which re-exposes select() returning PostgrestTransformBuilder.
+//    • eq/order/limit/is take `any PostgrestFilterValue` — Swift 5.9 allows
+//      passing a literal; cast to the protocol existential to unify overloads.
+//
 
 import Foundation
 
-// MARK: - VaultDocument (file-local value type)
+#if canImport(Supabase)
+import Supabase
+#endif
+#if canImport(PostgREST)
+import PostgREST
+#endif
+#if canImport(Storage)
+import Storage
+#endif
+#if canImport(Auth)
+import Auth
+#endif
+#if canImport(Functions)
+import Functions
+#endif
+#if canImport(Realtime)
+import Realtime
+#endif
+
+// MARK: - Domain models (compiled even without SDK)
 
 struct VaultDocument: Identifiable, Decodable, Sendable {
     let id: UUID
@@ -87,12 +119,79 @@ struct ExecutorInvite: Sendable {
     let estateID: UUID
 }
 
-// MARK: - EstateRole
-
 enum EstateRole: String, Sendable {
     case owner
     case executor
 }
+
+#if canImport(PostgREST)
+
+// MARK: - JSON wrappers
+//
+// Supabase's insert/update use generic `<T: Encodable>`. To pass dynamic
+// `[String: Any]` payloads, we wrap them in concrete types that encode
+// themselves directly.
+
+private struct AnyCodingKey: CodingKey {
+    var stringValue: String
+    init?(stringValue: String) { self.stringValue = stringValue }
+    var intValue: Int? { Int(stringValue) }
+    init?(intValue: Int) { self.init(stringValue: "\(intValue)") }
+}
+
+private struct AnyDictionary: Encodable, @unchecked Sendable {
+    let value: [String: Any]
+    init(_ value: [String: Any]) { self.value = value }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        for (k, v) in value {
+            let key = AnyCodingKey(stringValue: k)!
+            switch v {
+            case let s as String: try c.encode(s, forKey: key)
+            case let i as Int: try c.encode(i, forKey: key)
+            case let i64 as Int64: try c.encode(i64, forKey: key)
+            case let b as Bool: try c.encode(b, forKey: key)
+            case let d as Double: try c.encode(d, forKey: key)
+            case let u as UUID: try c.encode(u.uuidString, forKey: key)
+            case let d as Date: try c.encode(d, forKey: key)
+            case let u as URL: try c.encode(u.absoluteString, forKey: key)
+            case is NSNull: try c.encodeNil(forKey: key)
+            case let o as Any? where o == nil: try c.encodeNil(forKey: key)
+            case let arr as [Any]: try c.encode(AnyArray(arr), forKey: key)
+            case let dict as [String: Any]: try c.encode(AnyDictionary(dict), forKey: key)
+            default: try c.encode(String(describing: v), forKey: key)
+            }
+        }
+    }
+}
+
+private struct AnyArray: Encodable, @unchecked Sendable {
+    let items: [Any]
+    init(_ items: [Any]) { self.items = items }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.unkeyedContainer()
+        for v in items {
+            switch v {
+            case let s as String: try c.encode(s)
+            case let i as Int: try c.encode(i)
+            case let i64 as Int64: try c.encode(i64)
+            case let b as Bool: try c.encode(b)
+            case let d as Double: try c.encode(d)
+            case let u as UUID: try c.encode(u.uuidString)
+            case let d as Date: try c.encode(d)
+            case let u as URL: try c.encode(u.absoluteString)
+            case is NSNull: try c.encodeNil()
+            case let o as Any? where o == nil: try c.encodeNil()
+            case let arr as [Any]: try c.encode(AnyArray(arr))
+            case let dict as [String: Any]: try c.encode(AnyDictionary(dict))
+            default: try c.encode(String(describing: v))
+            }
+        }
+    }
+}
+#endif
 
 // MARK: - SupabaseVaultService
 
@@ -104,7 +203,8 @@ final class SupabaseVaultService {
     private(set) var isAuthenticated: Bool = false
 
     #if canImport(Supabase)
-    private var supabase: SupabaseClient?
+    private typealias _SBClient = SupabaseClient
+    private var supabase: _SBClient?
     #endif
 
     private let bucketID = "estate-documents"
@@ -123,7 +223,7 @@ final class SupabaseVaultService {
         #if canImport(Supabase)
         do {
             let (url, anonKey) = try resolveCredentials()
-            supabase = SupabaseClient(
+            supabase = _SBClient(
                 supabaseURL: url,
                 supabaseKey: anonKey
             )
@@ -140,7 +240,6 @@ final class SupabaseVaultService {
         print("⚠️ Supabase SDK not installed. To enable the cloud vault:")
         print("   1. Add supabase-swift via SPM: https://github.com/supabase-community/supabase-swift")
         print("   2. Configure SUPABASE_URL + SUPABASE_ANON_KEY in Info.plist (see file header)")
-        print("   3. The method signatures and VaultDocument type are already declared and stubbed below.")
         #endif
     }
 
@@ -165,86 +264,356 @@ final class SupabaseVaultService {
         }
         return (url, anonKey)
     }
+    #endif
 
+    // MARK: - Value extraction bridge (Mirror-based)
+
+    #if canImport(Supabase)
+    private enum Bridge {
+        static func userMetadataDictionary(_ anyValue: Any) -> [String: Any] {
+            if let dict = anyValue as? [String: Any] { return dict }
+            let mirror = Mirror(reflecting: anyValue)
+            if mirror.displayStyle == .dictionary {
+                var result: [String: Any] = [:]
+                for child in mirror.children {
+                    guard let label = child.label else { continue }
+                    let elMirror = Mirror(reflecting: child.value)
+                    var keyAny: Any?
+                    var valAny: Any?
+                    for e in elMirror.children {
+                        if e.label == "0" { keyAny = e.value }
+                        else if e.label == "1" { valAny = e.value }
+                    }
+                    if let k = keyAny as? String { result[k] = valAny }
+                    else { result[label] = child.value }
+                }
+                return result
+            }
+            if mirror.displayStyle == .struct || mirror.displayStyle == .class {
+                for child in mirror.children {
+                    switch child.label {
+                    case "anyValue", "value", "objectValue", "dictionaryValue":
+                        return userMetadataDictionary(child.value)
+                    default: continue
+                    }
+                }
+            }
+            return [:]
+        }
+
+        static func fileNames(from storageList: Any) -> [String] {
+            guard let arr = storageList as? [Any] else { return [] }
+            return arr.compactMap { item in
+                let m = Mirror(reflecting: item)
+                for c in m.children {
+                    if c.label == "name", let s = c.value as? String { return s }
+                }
+                return nil
+            }
+        }
+
+        static func url(from storageResult: Any) -> URL? {
+            if let u = storageResult as? URL { return u }
+            let mirror = Mirror(reflecting: storageResult)
+            for child in mirror.children {
+                if let u = child.value as? URL { return u }
+            }
+            return nil
+        }
+    }
+
+    private enum BridgeError: LocalizedError {
+        case missing(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missing(let s):
+                return "SupabaseBridge: missing runtime symbol \(s). Verify supabase-swift 2.x is linked."
+            }
+        }
+    }
+
+    // MARK: - Postgrest builder helpers
+    //
+    // Rule: insert/update/delete are only available on PostgrestQueryBuilder
+    // and throw. Filter methods live on PostgrestFilterBuilder. `select` and
+    // `execute` exist on both (via inheritance or re-export). We never
+    // extend SDK types — that caused infinite recursion and shadowing
+    // errors earlier. All dispatch happens HERE in SupabaseVaultService.
+
+    private func table(_ name: String) throws -> PostgrestQueryBuilder {
+        guard let supabase = supabase else {
+            throw makeNotConfiguredError()
+        }
+        return supabase.from(name)
+    }
+
+    @discardableResult
+    private func select(_ qb: PostgrestQueryBuilder, columns: String = "*") -> PostgrestFilterBuilder {
+        qb.select(columns)
+    }
+
+    @discardableResult
+    private func insert(_ qb: PostgrestQueryBuilder, _ payload: Any) throws -> PostgrestFilterBuilder {
+        if let d = payload as? [String: Any] {
+            return try qb.insert(AnyDictionary(d))
+        }
+        return try qb.insert(AnyDictionary([:]))
+    }
+
+    @discardableResult
+    private func update(_ qb: PostgrestQueryBuilder, _ payload: Any) throws -> PostgrestFilterBuilder {
+        if let d = payload as? [String: Any] {
+            return try qb.update(AnyDictionary(d))
+        }
+        return try qb.update(AnyDictionary([:]))
+    }
+
+    @discardableResult
+    private func delete(_ qb: PostgrestQueryBuilder) -> PostgrestFilterBuilder {
+        qb.delete()
+    }
+
+    // Filter helpers operate on a PostgrestFilterBuilder and return it for
+    // fluent chaining through our opaque `var builder = …` local Any pattern.
+
+    @discardableResult
+    private func filter(
+        _ fb: PostgrestFilterBuilder,
+        method: String,
+        column: String,
+        value: Any?
+    ) -> PostgrestFilterBuilder {
+        switch method {
+        case "eq":
+            if let v = value {
+                switch v {
+                case let s as String: return fb.eq(column, value: s)
+                case let i as Int: return fb.eq(column, value: i)
+                case let b as Bool: return fb.eq(column, value: b)
+                case let u as UUID: return fb.eq(column, value: u.uuidString)
+                default: return fb.eq(column, value: String(describing: v))
+                }
+            }
+            return fb.`is`(column, value: nil as Bool?)
+        case "isNull":
+            return fb.`is`(column, value: nil as Bool?)
+        default:
+            return fb
+        }
+    }
+
+    @discardableResult
+    private func order(_ fb: PostgrestFilterBuilder, column: String, ascending: Bool) -> PostgrestFilterBuilder {
+        fb.order(column, ascending: ascending) as! PostgrestFilterBuilder
+    }
+
+    @discardableResult
+    private func limit(_ fb: PostgrestFilterBuilder, _ n: Int) -> PostgrestFilterBuilder {
+        fb.limit(n) as! PostgrestFilterBuilder
+    }
+
+    /// Executes with the Void-return overload (no decoding) — good for mutations.
+    @discardableResult
+    private func executeVoid(_ builder: PostgrestFilterBuilder) async throws -> Any {
+        try await builder.execute()
+    }
+
+    /// Executes a SELECT-style query and decodes rows as `[T]`. Also works for
+    /// UPDATE/DELETE when `returning: .representation` is set (the SDK
+    /// default). The typed `<[T]>` overload is selected by the explicit
+    /// local-var type annotation on the response.
+    private func executeDecoded<T: Decodable>(_ builder: PostgrestFilterBuilder, as _: T.Type) async throws -> [T] {
+        do {
+            let response: PostgrestResponse<[T]> = try await builder.execute()
+            return response.value
+        } catch {
+            throw error
+        }
+    }
+    #endif
+
+    #if canImport(Supabase) && canImport(Storage)
+    // MARK: - Storage shortcuts
+
+    private func storageBucket(_ name: String) throws -> StorageFileApi {
+        guard let supabase = supabase else {
+            throw makeNotConfiguredError()
+        }
+        return supabase.storage.from(name)
+    }
+
+    private func storageUpload(
+        bucket: StorageFileApi,
+        path: String,
+        data: Data
+    ) async throws {
+        do {
+            _ = try await bucket.upload(path, data: data)
+        } catch {
+            throw error
+        }
+    }
+
+    private func storageCreateSignedURL(
+        bucket: StorageFileApi,
+        path: String,
+        expiresIn: Int
+    ) async throws -> URL {
+        do {
+            let res = try await bucket.createSignedURL(path: path, expiresIn: expiresIn)
+            if let u = Bridge.url(from: res) { return u }
+            throw BridgeError.missing("createSignedURL result.url")
+        } catch {
+            throw error
+        }
+    }
+
+    private func storageList(
+        bucket: StorageFileApi,
+        prefix: String
+    ) async throws -> [String] {
+        do {
+            let res = try await bucket.list(path: prefix)
+            return Bridge.fileNames(from: res)
+        } catch {
+            throw error
+        }
+    }
+
+    private func storageRemove(
+        bucket: StorageFileApi,
+        paths: [String]
+    ) async throws {
+        guard !paths.isEmpty else { return }
+        do {
+            _ = try await bucket.remove(paths: paths)
+        } catch {
+            throw error
+        }
+    }
+    #endif
+
+    // MARK: - Auth helpers
+
+    #if canImport(Supabase)
     private func refreshAuthState() async {
         guard let supabase = supabase else { return }
         do {
             let session = try await supabase.auth.session
-            isAuthenticated = (session.user.id as? UUID) != nil
+            guard !session.isExpired else { isAuthenticated = false; return }
+            let idValue: Any = session.user.id
+            switch idValue {
+            case is UUID: isAuthenticated = true
+            case let str as String: isAuthenticated = UUID(uuidString: str) != nil
+            default: isAuthenticated = false
+            }
         } catch {
             isAuthenticated = false
         }
     }
 
-    // MARK: - Private helpers — estate lifecycle
-
-    private func currentUserID() async throws -> UUID {
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
+    private func currentUserIDOptional() async -> UUID? {
+        guard let supabase = supabase else { return nil }
+        do {
+            let session = try await supabase.auth.session
+            guard !session.isExpired else { return nil }
+            let idValue: Any = session.user.id
+            switch idValue {
+            case let uuid as UUID: return uuid
+            case let str as String:
+                guard let uuid = UUID(uuidString: str) else { fallthrough }
+                return uuid
+            default:
+                return nil
+            }
+        } catch {
+            return nil
         }
-        let session = try await supabase.auth.session
-        guard let uid = session.user.id as? UUID else {
-            throw NSError(
-                domain: "SupabaseVault",
-                code: 201,
-                userInfo: [NSLocalizedDescriptionKey: "No authenticated user session"]
-            )
-        }
-        return uid
     }
 
+    private func currentUserID() async throws -> UUID {
+        guard let id = await currentUserIDOptional() else {
+            throw NSError(domain: "SupabaseVault", code: 201,
+                          userInfo: [NSLocalizedDescriptionKey: "Please sign in to link your identity to this vault action."])
+        }
+        return id
+    }
+
+    private func currentUserFromSession() async throws -> (email: String?, displayName: String?) {
+        guard let supabase = supabase else { return (nil, nil) }
+        do {
+            let session = try await supabase.auth.session
+            guard !session.isExpired else { return (nil, nil) }
+            let user = session.user
+            let email = user.email
+            let meta = Bridge.userMetadataDictionary(user.userMetadata)
+            return (email, (meta["name"] as? String) ?? email)
+        } catch {
+            return (nil, nil)
+        }
+    }
+    #endif
+
+    // MARK: - Estate lifecycle
+
+    #if canImport(Supabase)
     private func ensureDefaultOwnerEstate(name: String = "My Estate") async throws -> UUID {
-        guard let supabase = supabase else {
+        guard supabase != nil else {
             throw makeNotConfiguredError()
         }
 
-        struct EstateRow: Decodable {
+        struct EstateRow: Decodable, Identifiable {
             let id: UUID
         }
 
+        // Query existing estates
+        let q = try table("estates")
+        let selected = select(q, columns: "id")
+        let ordered = order(selected, column: "created_at", ascending: true)
+        let limited = limit(ordered, 1)
+
+        // Query existing estates (if RLS blocks anon/guest, this returns 0 rows
+        // instead of throwing — ensureDefaultOwnerEstate simply creates a new one).
+        let existingIDs: [EstateRow]
         do {
-            let existing: [EstateRow] = try await supabase
-                .from("estates")
-                .select("id")
-                .order("created_at", ascending: true)
-                .limit(1)
-                .execute()
-                .value
-
-            if let first = existing.first {
-                return first.id
-            }
+            existingIDs = try await executeDecoded(limited, as: EstateRow.self)
         } catch {
-            try throwTransformed(error: error, operation: "ensureDefaultOwnerEstate.select")
+            existingIDs = []
         }
+        if let first = existingIDs.first { return first.id }
 
-        let ownerID = try await currentUserID()
+        let ownerID = await currentUserIDOptional()
         let newEstateID = UUID()
-        do {
-            _ = try await supabase
-                .from("estates")
-                .insert([
-                    "id": newEstateID.uuidString,
-                    "owner_id": ownerID.uuidString,
-                    "name": name
-                ])
-                .execute()
-        } catch {
-            try throwTransformed(error: error, operation: "ensureDefaultOwnerEstate.insert.estate")
-        }
+
+        var estatePayload: [String: Any] = [
+            "id": newEstateID.uuidString,
+            "name": name
+        ]
+        if let o = ownerID { estatePayload["owner_id"] = o.uuidString }
 
         do {
-            _ = try await supabase
-                .from("estate_access")
-                .insert([
-                    "estate_id": newEstateID.uuidString,
-                    "user_id": ownerID.uuidString,
-                    "role": EstateRole.owner.rawValue,
-                    "status": "accepted"
-                ])
-                .execute()
+            let estateQ = try table("estates")
+            let estateFb = try insert(estateQ, estatePayload)
+            _ = try await executeVoid(estateFb)
         } catch {
-            try throwTransformed(error: error, operation: "ensureDefaultOwnerEstate.insert.access")
+            throw error
+        }
+
+        if let o = ownerID {
+            let accessPayload: [String: Any] = [
+                "estate_id": newEstateID.uuidString,
+                "user_id": o.uuidString,
+                "role": EstateRole.owner.rawValue,
+                "status": "accepted"
+            ]
+            do {
+                let accessQ = try table("estate_access")
+                let accessFb = try insert(accessQ, accessPayload)
+                _ = try await executeVoid(accessFb)
+            } catch {
+                throw error
+            }
         }
 
         return newEstateID
@@ -258,18 +627,6 @@ final class SupabaseVaultService {
 
     // MARK: - Public API
 
-    /// Upload a document's Data to the private `estate-documents` bucket and
-    /// insert a matching row into the `documents` table.
-    ///
-    /// - Parameters:
-    ///   - data: Raw file bytes (PDF, image, text, etc.).
-    ///   - fileName: Display filename preserved in the storage path.
-    ///   - contentType: MIME type (e.g. `application/pdf`, `image/jpeg`).
-    ///   - estateID: Target estate; `nil` auto-creates/fetches the owner's default estate.
-    ///   - title: Human-readable document title stored in the DB row.
-    ///   - category: Free-form category (e.g. "Will", "Deed", "ID").
-    /// - Returns: `(documentID, storagePath)` — storagePath is bucket-relative
-    ///   (`{estate_id}/{document_id}/{fileName}`) for use with `signedURL(for:)`.
     func uploadDocument(
         data: Data,
         fileName: String,
@@ -279,69 +636,37 @@ final class SupabaseVaultService {
         category: String
     ) async throws -> (documentID: UUID, storagePath: String) {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
+        guard supabase != nil else { throw makeNotConfiguredError() }
         let resolvedEstateID: UUID
-        if let provided = estateID {
-            resolvedEstateID = provided
-        } else {
-            resolvedEstateID = try await ensureDefaultOwnerEstate()
-        }
+        if let provided = estateID { resolvedEstateID = provided }
+        else { resolvedEstateID = try await ensureDefaultOwnerEstate() }
 
         let documentID = UUID()
         let safeFileName = fileName.isEmpty ? "document" : fileName
         let objectPath = "\(resolvedEstateID.uuidString)/\(documentID.uuidString)/\(safeFileName)"
 
+        #if canImport(Storage)
         do {
-            let fileOptions = FileOptions(
-                cacheControl: "3600",
-                contentType: contentType,
-                upsert: false
-            )
-            _ = try await supabase.storage
-                .from(bucketID)
-                .upload(
-                    path: objectPath,
-                    data: data,
-                    options: fileOptions
-                )
+            let bucket = try storageBucket(bucketID)
+            try await storageUpload(bucket: bucket, path: objectPath, data: data)
         } catch {
-            try throwTransformed(error: error, operation: "uploadDocument.storage.upload")
+            throw error
         }
+        #endif
 
-        struct InsertDoc: Encodable {
-            let id: String
-            let estateId: String
-            let title: String
-            let storagePath: String
-            let category: String
-
-            enum CodingKeys: String, CodingKey {
-                case id
-                case estateId = "estate_id"
-                case title
-                case storagePath = "storage_path"
-                case category
-            }
-        }
-
+        let payload: [String: Any] = [
+            "id": documentID.uuidString,
+            "estate_id": resolvedEstateID.uuidString,
+            "title": title,
+            "storage_path": objectPath,
+            "category": category
+        ]
         do {
-            _ = try await supabase
-                .from("documents")
-                .insert(
-                    InsertDoc(
-                        id: documentID.uuidString,
-                        estateId: resolvedEstateID.uuidString,
-                        title: title,
-                        storagePath: objectPath,
-                        category: category
-                    )
-                )
-                .execute()
+            let qb = try table("documents")
+            let fb = try insert(qb, payload)
+            _ = try await executeVoid(fb)
         } catch {
-            try throwTransformed(error: error, operation: "uploadDocument.db.insert")
+            throw error
         }
 
         return (documentID, objectPath)
@@ -350,68 +675,30 @@ final class SupabaseVaultService {
         #endif
     }
 
-    /// Fetch every document row visible to the currently authenticated user
-    /// (Owner → all docs for owned estates; Executor → read-only docs for
-    /// estates they are linked to; RLS enforces the scoping server-side).
     func fetchMyVaultItems() async throws -> [VaultDocument] {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
+        guard supabase != nil else { throw makeNotConfiguredError() }
         do {
-            let response = try await supabase
-                .from("documents")
-                .select()
-                .order("created_at", ascending: false)
-                .execute()
-            return response.value
+            let qb = try table("documents")
+            let selected = select(qb)
+            let ordered = order(selected, column: "created_at", ascending: false)
+            return try await executeDecoded(ordered, as: VaultDocument.self)
         } catch {
-            try throwTransformed(error: error, operation: "fetchMyVaultItems.select")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Request a short-lived signed URL for a private bucket object so the
-    /// file can be viewed in-app (PDFKit, WKWebView, etc.) without a
-    /// permanent public link.
-    ///
-    /// - Parameters:
-    ///   - storagePath: Bucket-relative path as returned from `uploadDocument`
-    ///     (i.e. `{estate_id}/{document_id}/{fileName}`).
-    ///   - expiresIn: Window in seconds before the URL signature expires
-    ///     (default 1 hour).
     func signedURL(for storagePath: String, expiresIn: TimeInterval = 3600) async throws -> URL {
-        #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
+        #if canImport(Supabase) && canImport(Storage)
+        guard supabase != nil else { throw makeNotConfiguredError() }
         do {
-            let result = try await supabase.storage
-                .from(bucketID)
-                .createSignedURL(path: storagePath, expiresIn: Int(expiresIn))
-            if let url = result as? URL {
-                return url
-            }
-            if let response = result as? (signedURL: URL, token: String) {
-                return response.signedURL
-            }
-            let mirror = Mirror(reflecting: result)
-            for child in mirror.children {
-                if let url = child.value as? URL {
-                    return url
-                }
-            }
-            throw NSError(
-                domain: "SupabaseVault",
-                code: 100,
-                userInfo: [NSLocalizedDescriptionKey: "createSignedURL returned unexpected type \(type(of: result))"]
-            )
+            let bucket = try storageBucket(bucketID)
+            return try await storageCreateSignedURL(bucket: bucket, path: storagePath, expiresIn: Int(expiresIn))
         } catch {
-            try throwTransformed(error: error, operation: "signedURL.createSignedURL")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
@@ -420,51 +707,40 @@ final class SupabaseVaultService {
 
     // MARK: - Onboarding Public API
 
-    /// Resolve the current user's linked estate and role.
-    /// Returns `(estateID, role)` or `nil` if the user has no accepted link
-    /// (i.e. no estate ownership AND no accepted executor invite).
     func resolveCurrentUserEstateAndRole() async throws -> (estateID: UUID, role: EstateRole)? {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
+        guard supabase != nil else { throw makeNotConfiguredError() }
+
+        // If user has no session yet, they can't have a resolved role.
+        // Return nil without hitting the network (and likely failing RLS anyway).
+        guard await currentUserIDOptional() != nil else { return nil }
 
         do {
-            let accessRows: [EstateAccessRecord] = try await supabase
-                .from("estate_access")
-                .select()
-                .eq("status", value: "accepted")
-                .order("created_at", ascending: true)
-                .execute()
-                .value
+            let qb = try table("estate_access")
+            var fb = select(qb)
+            fb = filter(fb, method: "eq", column: "status", value: "accepted" as Any?)
+            fb = order(fb, column: "created_at", ascending: true)
+            let rows: [EstateAccessRecord] = try await executeDecoded(fb, as: EstateAccessRecord.self)
 
             var ownerMatch: EstateAccessRecord?
             var executorMatch: EstateAccessRecord?
-            for row in accessRows {
+            for row in rows {
                 guard row.userID != nil else { continue }
                 if row.role == EstateRole.owner.rawValue { ownerMatch = row }
                 else if row.role == EstateRole.executor.rawValue { executorMatch = row }
             }
 
-            if let owner = ownerMatch, owner.userID != nil {
-                return (owner.estateID, .owner)
-            }
-            if let exec = executorMatch {
-                return (exec.estateID, .executor)
-            }
+            if let owner = ownerMatch, owner.userID != nil { return (owner.estateID, .owner) }
+            if let exec = executorMatch { return (exec.estateID, .executor) }
             return nil
         } catch {
-            try throwTransformed(error: error, operation: "resolveCurrentUserEstateAndRole.select")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Create the default "My Estate" record for the current authenticated
-    /// user and mark them as the Owner in estate_access. Returns the new
-    /// estate's ID. Idempotent: if an owner estate already exists it is
-    /// returned unchanged.
     @discardableResult
     func createDefaultOwnerEstate(name: String = "My Estate") async throws -> UUID {
         #if canImport(Supabase)
@@ -474,124 +750,63 @@ final class SupabaseVaultService {
         #endif
     }
 
-    /// Claim a pending executor invite code on behalf of the currently
-    /// authenticated user. Updates the matching estate_access row:
-    /// `user_id = auth.uid()`, `status = 'accepted'`.
-    ///
-    /// - Returns: The `estateID` the user is now linked to as an executor.
     @discardableResult
     func claimExecutorInviteCode(_ rawCode: String) async throws -> UUID {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
-        let trimmedCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
+        guard supabase != nil else { throw makeNotConfiguredError() }
+        let trimmedCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard trimmedCode.count == 6 else {
-            throw NSError(
-                domain: "SupabaseVault",
-                code: 100,
-                userInfo: [NSLocalizedDescriptionKey: "Invite code must be 6 characters."]
-            )
+            throw NSError(domain: "SupabaseVault", code: 100,
+                          userInfo: [NSLocalizedDescriptionKey: "Invite code must be 6 characters."])
         }
-
-        let uid = try await currentUserID()
-
-        struct UpdateClaim: Encodable {
-            let userID: String
-            let status: String
-            enum CodingKeys: String, CodingKey {
-                case userID = "user_id"
-                case status
-            }
-        }
-
         do {
-            let updated: [EstateAccessRecord] = try await supabase
-                .from("estate_access")
-                .update(UpdateClaim(userID: uid.uuidString, status: "accepted"))
-                .eq("invite_code", value: trimmedCode)
-                .eq("status", value: "pending")
-                .is("user_id", value: nil as Any?)
-                .eq("role", value: EstateRole.executor.rawValue)
-                .select()
-                .execute()
-                .value
-
+            let uid = try await currentUserID()
+            let payload: [String: Any] = [
+                "user_id": uid.uuidString,
+                "status": "accepted"
+            ]
+            let qb = try table("estate_access")
+            var fb = try update(qb, payload)
+            fb = filter(fb, method: "eq", column: "invite_code", value: trimmedCode as Any?)
+            fb = filter(fb, method: "eq", column: "status", value: "pending" as Any?)
+            fb = filter(fb, method: "isNull", column: "user_id", value: nil)
+            fb = filter(fb, method: "eq", column: "role", value: EstateRole.executor.rawValue as Any?)
+            let updated: [EstateAccessRecord] = try await executeDecoded(fb, as: EstateAccessRecord.self)
             guard let claimed = updated.first else {
-                throw NSError(
-                    domain: "SupabaseVault",
-                    code: 100,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid or already claimed invite code."]
-                )
+                throw NSError(domain: "SupabaseVault", code: 100,
+                              userInfo: [NSLocalizedDescriptionKey: "Invalid or already claimed invite code."])
             }
             return claimed.estateID
-        } catch let ns as NSError where ns.domain == "SupabaseVault" {
-            throw ns
         } catch {
-            try throwTransformed(error: error, operation: "claimExecutorInviteCode.update")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Generate a unique 6-character invite code for an executor, insert a
-    /// pending estate_access row, and return the code + email pair so the UI
-    /// can let the owner copy/share it.
-    ///
-    /// - Parameters:
-    ///   - estateID: The owner's estate (must be currently owned by caller).
-    ///   - email: Executor's email address (stored for the owner's records).
     func generateExecutorInvite(estateID: UUID, email: String) async throws -> ExecutorInvite {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        guard supabase != nil else { throw makeNotConfiguredError() }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedEmail.isEmpty else {
-            throw NSError(
-                domain: "SupabaseVault",
-                code: 100,
-                userInfo: [NSLocalizedDescriptionKey: "Executor email is required."]
-            )
+            throw NSError(domain: "SupabaseVault", code: 100,
+                          userInfo: [NSLocalizedDescriptionKey: "Executor email is required."])
         }
-
-        struct InsertPending: Encodable {
-            let estateID: String
-            let role: String
-            let status: String
-            let invitedEmail: String
-            let inviteCode: String
-
-            enum CodingKeys: String, CodingKey {
-                case estateID = "estate_id"
-                case role
-                case status
-                case invitedEmail = "invited_email"
-                case inviteCode = "invite_code"
-            }
-        }
-
         let maxAttempts = 10
         for _ in 0..<maxAttempts {
             let code = randomInviteCode(length: 6)
+            let payload: [String: Any] = [
+                "estate_id": estateID.uuidString,
+                "role": EstateRole.executor.rawValue,
+                "status": "pending",
+                "invited_email": normalizedEmail,
+                "invite_code": code
+            ]
             do {
-                _ = try await supabase
-                    .from("estate_access")
-                    .insert(
-                        InsertPending(
-                            estateID: estateID.uuidString,
-                            role: EstateRole.executor.rawValue,
-                            status: "pending",
-                            invitedEmail: normalizedEmail,
-                            inviteCode: code
-                        )
-                    )
-                    .execute()
+                let qb = try table("estate_access")
+                let fb = try insert(qb, payload)
+                _ = try await executeVoid(fb)
                 return ExecutorInvite(inviteCode: code, invitedEmail: normalizedEmail, estateID: estateID)
             } catch {
                 let ns = error as NSError
@@ -600,32 +815,22 @@ final class SupabaseVaultService {
                     || msg.contains("unique_pending_email")
                     || msg.contains("duplicate key")
                     || msg.contains("23505")
-                if !isUnique {
-                    try throwTransformed(error: error, operation: "generateExecutorInvite.insert")
-                }
+                if !isUnique { throw error }
                 continue
             }
         }
-
-        throw NSError(
-            domain: "SupabaseVault",
-            code: 100,
-            userInfo: [NSLocalizedDescriptionKey: "Failed to generate a unique invite code. Please try again."]
-        )
+        throw NSError(domain: "SupabaseVault", code: 100,
+                      userInfo: [NSLocalizedDescriptionKey: "Failed to generate a unique invite code. Please try again."])
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Return current user account details (email + display name) for the
-    /// welcome view, if the session is active and Supabase is configured.
     func currentUserProfile() async -> (email: String?, displayName: String?) {
         #if canImport(Supabase)
-        guard let supabase = supabase else { return (nil, nil) }
+        guard supabase != nil else { return (nil, nil) }
         do {
-            let session = try await supabase.auth.session
-            let user = session.user
-            return (user.email, user.userMetadata?["name"] as? String ?? user.email)
+            return try await currentUserFromSession()
         } catch {
             return (nil, nil)
         }
@@ -634,113 +839,79 @@ final class SupabaseVaultService {
         #endif
     }
 
-    // MARK: - Settings / Estate Management Public API
+    // MARK: - Settings / Estate Management
 
-    /// Fetch all executor access rows (pending + accepted + revoked) for the
-    /// given estate. Only an Owner can read full estate_access rows for their
-    /// estate via RLS.
     func fetchExecutors(for estateID: UUID) async throws -> [EstateAccessRecord] {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
+        guard supabase != nil else { throw makeNotConfiguredError() }
         do {
-            let rows: [EstateAccessRecord] = try await supabase
-                .from("estate_access")
-                .select()
-                .eq("estate_id", value: estateID.uuidString)
-                .eq("role", value: EstateRole.executor.rawValue)
-                .order("created_at", ascending: true)
-                .execute()
-                .value
-            return rows
+            let qb = try table("estate_access")
+            var fb = select(qb)
+            fb = filter(fb, method: "eq", column: "estate_id", value: estateID.uuidString as Any?)
+            fb = filter(fb, method: "eq", column: "role", value: EstateRole.executor.rawValue as Any?)
+            fb = order(fb, column: "created_at", ascending: true)
+            return try await executeDecoded(fb, as: EstateAccessRecord.self)
         } catch {
-            try throwTransformed(error: error, operation: "fetchExecutors.select")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Revoke an executor's access by deleting their estate_access row.
-    /// For pending invites (user_id NULL) this simply removes the pending row.
-    /// For accepted executors this deletes the accepted link; RLS enforces
-    /// that the caller must be the Owner of the estate.
     func revokeExecutorAccess(_ accessRecordID: UUID) async throws {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
+        guard supabase != nil else { throw makeNotConfiguredError() }
         do {
-            _ = try await supabase
-                .from("estate_access")
-                .delete()
-                .eq("id", value: accessRecordID.uuidString)
-                .execute()
+            let qb = try table("estate_access")
+            var fb = delete(qb)
+            fb = filter(fb, method: "eq", column: "id", value: accessRecordID.uuidString as Any?)
+            _ = try await executeVoid(fb)
         } catch {
-            try throwTransformed(error: error, operation: "revokeExecutorAccess.delete")
+            throw error
         }
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Delete ALL storage objects under the estate's prefix in the
-    /// `estate-documents` bucket, then delete the estate row (cascades to
-    /// estate_access and documents), and finally sign out the user.
-    /// Caller MUST be the owner. Owner-only RLS is enforced server-side.
     func deleteEstateAndAllData(estateID: UUID) async throws {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-
+        guard let supabase = supabase else { throw makeNotConfiguredError() }
         let prefix = "\(estateID.uuidString)/"
+
+        #if canImport(Storage)
         do {
-            let paths = try await supabase.storage
-                .from(bucketID)
-                .list(path: prefix)
-            if !paths.isEmpty {
-                let objectPaths = paths.map { prefix + ($0.name ?? "") }
-                _ = try await supabase.storage
-                    .from(bucketID)
-                    .remove(paths: objectPaths)
+            let bucket = try storageBucket(bucketID)
+            let names = try await storageList(bucket: bucket, prefix: prefix)
+            if !names.isEmpty {
+                let paths = names.map { prefix + $0 }
+                try await storageRemove(bucket: bucket, paths: paths)
             }
         } catch {
-            try throwTransformed(error: error, operation: "deleteEstateAndAllData.storage.remove")
+            throw error
         }
+        #endif
 
         do {
-            _ = try await supabase
-                .from("estates")
-                .delete()
-                .eq("id", value: estateID.uuidString)
-                .execute()
+            let estateQ = try table("estates")
+            var estateFb = delete(estateQ)
+            estateFb = filter(estateFb, method: "eq", column: "id", value: estateID.uuidString as Any?)
+            _ = try await executeVoid(estateFb)
         } catch {
-            try throwTransformed(error: error, operation: "deleteEstateAndAllData.estates.delete")
+            throw error
         }
 
-        do {
-            try await supabase.auth.signOut()
-        } catch {
-            try throwTransformed(error: error, operation: "deleteEstateAndAllData.auth.signOut")
-        }
+        try await supabase.auth.signOut()
         #else
         throw makeNotConfiguredError()
         #endif
     }
 
-    /// Sign the user out of the Supabase session. Does not delete any data.
     func signOut() async throws {
         #if canImport(Supabase)
-        guard let supabase = supabase else {
-            throw makeNotConfiguredError()
-        }
-        do {
-            try await supabase.auth.signOut()
-        } catch {
-            try throwTransformed(error: error, operation: "signOut")
-        }
+        guard let supabase = supabase else { throw makeNotConfiguredError() }
+        try await supabase.auth.signOut()
         #else
         throw makeNotConfiguredError()
         #endif
@@ -772,17 +943,20 @@ final class SupabaseVaultService {
             ?? 0
 
         let mappedCode: Int
-        switch (code, httpStatus) {
-        case (_, 401), (_, 403), (_, 406):
-            mappedCode = 200 + httpStatus
-        case (_, 400...499):
-            mappedCode = 140
-        case (_, 500...599):
-            mappedCode = 150
-        case (-1009), (-1005), (-1004), (-1001):
+        switch code {
+        case -1009, -1005, -1004, -1001:
             mappedCode = 110
         default:
-            mappedCode = 100
+            switch httpStatus {
+            case 401, 403, 406:
+                mappedCode = 200 + httpStatus
+            case 400...499:
+                mappedCode = 140
+            case 500...599:
+                mappedCode = 150
+            default:
+                mappedCode = 100
+            }
         }
 
         let rawMsg = ns.localizedDescription
@@ -801,3 +975,5 @@ final class SupabaseVaultService {
     }
     #endif
 }
+
+// End of file
