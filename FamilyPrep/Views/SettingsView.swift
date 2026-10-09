@@ -621,6 +621,7 @@ struct SettingsView: View {
     private func generateAdditionalInvite() {
         guard let eid = currentEstateID else { return }
         let service = SupabaseVaultService.shared
+        NSLog("FamilyPrepUI Settings generateAdditionalInvite — estateID=\(eid.uuidString), email=\(newExecutorEmail)")
         guard service.isConfigured else {
             errorMessage = "Cloud vault not configured. Add supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist."
             return
@@ -634,9 +635,12 @@ struct SettingsView: View {
                     email: newExecutorEmail
                 )
                 lastGeneratedInvite = invite
+                NSLog("FamilyPrepUI Settings ✅ SUCCESS — invite code = \(invite.inviteCode)")
                 await reloadExecutorsIfOwner()
             } catch {
-                errorMessage = error.localizedDescription
+                let ns = error as NSError
+                NSLog("FamilyPrepUI Settings ❌ ERROR — domain=\(ns.domain) code=\(ns.code) msg=\(ns.localizedDescription)")
+                errorMessage = HumanReadableError.message(for: error)
             }
         }
     }

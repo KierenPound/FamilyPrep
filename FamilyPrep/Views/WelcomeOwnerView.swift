@@ -362,21 +362,27 @@ struct WelcomeOwnerView: View {
 
     private func generateInviteTapped() {
         let service = SupabaseVaultService.shared
+        NSLog("FamilyPrepUI generateInviteTapped BEGIN — service.isConfigured=\(service.isConfigured), estateID=\(estateID.uuidString), email=\(executorEmail)")
         guard service.isConfigured else {
             errorMessage = "Cloud vault not configured. Install the supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist, or skip this step and continue offline."
+            NSLog("FamilyPrepUI ❌ early return — SupabaseVaultService.isConfigured is false")
             return
         }
         Task {
             isGenerating = true
             defer { isGenerating = false }
             do {
+                NSLog("FamilyPrepUI calling generateExecutorInvite…")
                 let invite = try await service.generateExecutorInvite(
                     estateID: estateID,
                     email: executorEmail
                 )
+                NSLog("FamilyPrepUI ✅ SUCCESS — invite code = \(invite.inviteCode)")
                 generatedInvite = invite
             } catch {
-                errorMessage = error.localizedDescription
+                let ns = error as NSError
+                NSLog("FamilyPrepUI ❌ ERROR — domain=\(ns.domain) code=\(ns.code) msg=\(ns.localizedDescription) userInfo=\(ns.userInfo)")
+                errorMessage = HumanReadableError.message(for: error)
             }
         }
     }
@@ -398,6 +404,96 @@ struct WelcomeOwnerView: View {
         Once you enter the code you'll be granted secure access to help manage my estate.
 
         — Family Prep
+        """
+    }
+}
+
+// MARK: - Error beautifier (never surface raw Postgres/RPC messages to the user)
+
+enum HumanReadableError {
+    static func message(for error: Error) -> String {
+        let ns = error as NSError
+        let msg = ns.localizedDescription.lowercased()
+        let domain = ns.domain.lowercased()
+
+        // -------------------------------------------------------------------
+        // 1. SupabaseVaultService codes we explicitly throw (friendly paths)
+        // -------------------------------------------------------------------
+        if domain == "supabasevault" {
+            switch ns.code {
+            case 201, 202:
+                return ns.localizedDescription
+            case 203:
+                return ns.localizedDescription
+            case 501:
+                return ns.localizedDescription
+            case 100 where msg.contains("invite code must be 6"):
+                return ns.localizedDescription
+            case 100 where msg.contains("executor email is required"):
+                return ns.localizedDescription
+            case 100 where msg.contains("failed to generate a unique"):
+                return ns.localizedDescription
+            case 100 where msg.contains("invalid or already claimed"):
+                return ns.localizedDescription
+            default:
+                break
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // 2. Catch-all known patterns: Postgres RLS, network, 4xx/5xx HTTP
+        // -------------------------------------------------------------------
+        if msg.contains("permission denied")
+            || msg.contains("row level security")
+            || msg.contains("policy")
+            || msg.contains("42501")
+            || ns.code == 403 {
+            return """
+            Your signed-in identity and your cloud estate aren't linked yet.
+            Try signing out of Family Prep, signing back in, then tapping Generate Invite Code again.
+            If it still fails, open Supabase → SQL Editor and run the file
+            supabase/migrations/harden_rls_execute_grants.sql, then re-launch the app.
+            """
+        }
+
+        if msg.contains("could not connect")
+            || msg.contains("offline")
+            || msg.contains("timed out")
+            || msg.contains("network")
+            || ns.code == -1009 || ns.code == -1001 || ns.code == -1005 || ns.code == -1004 {
+            return "Your device seems offline. Check your Wi-Fi/cellular connection and try again."
+        }
+
+        if msg.contains("duplicate key") || msg.contains("23505") || msg.contains("unique") {
+            if msg.contains("invite_code_unique") || msg.contains("pending_email") {
+                return "This email was already sent an invite. Check their inbox for the code, or revoke the old invite in Settings → Executors."
+            }
+            return "A record like this already exists. Refresh and try again."
+        }
+
+        if msg.contains("auth session missing") || msg.contains("not authenticated") || msg.contains("please sign in") {
+            return """
+            Sign in required to send an invite code.
+            Tap Continue as Guest / Sign in with Apple on the onboarding screen first,
+            then return here to invite your executor.
+            """
+        }
+
+        if ns.code >= 500 || msg.contains("server") {
+            return "Supabase returned a server error (HTTP \(ns.code)). Try again in a moment."
+        }
+
+        if ns.code >= 400 && ns.code < 500 {
+            return "Family Prep couldn't complete that request. If you just signed up, close the app and re-launch it once to let your account finish provisioning, then try again."
+        }
+
+        // -------------------------------------------------------------------
+        // 3. Absolute last-resort fallback — NEVER surface raw msg to user
+        // -------------------------------------------------------------------
+        return """
+        Invite couldn't be created right now.
+        Close and re-launch Family Prep, sign out and back in, then try again.
+        (For support: SupabaseVault code=\(ns.code) domain=\(ns.domain).)
         """
     }
 }

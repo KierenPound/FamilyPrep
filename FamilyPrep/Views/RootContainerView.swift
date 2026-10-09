@@ -86,8 +86,6 @@ struct RootContainerView: View {
         let service = SupabaseVaultService.shared
         let offlineFallbackID = pendingOwnerEstateID ?? UUID()
 
-        // If Supabase isn't configured at all, jump straight to offline owner-welcome
-        // with a local UUID. No cloud sync will occur until SPM/Info.plist is set up.
         guard service.isConfigured else {
             pendingOwnerEstateID = offlineFallbackID
             appState.completeOwnerWelcome(estateID: offlineFallbackID)
@@ -96,15 +94,12 @@ struct RootContainerView: View {
 
         Task {
             do {
-                let estateID = try await service.createDefaultOwnerEstate()
+                let estateID = try await service.createDefaultOwnerEstate(
+                    preferredID: offlineFallbackID
+                )
                 pendingOwnerEstateID = estateID
                 appState.showOwnerWelcome(estateID: estateID)
             } catch {
-                // First-launch cloud operations can fail for many benign reasons
-                // (RLS policies not yet bootstrapped, no auth session, offline).
-                // Don't block the user: fall back to a local UUID and let them
-                // proceed; cloud operations will be attempted again from Settings
-                // once Supabase sign-in + RLS are wired up.
                 print("ℹ️ createDefaultOwnerEstate fell back to local mode: \(error.localizedDescription)")
                 let localID = pendingOwnerEstateID ?? UUID()
                 pendingOwnerEstateID = localID

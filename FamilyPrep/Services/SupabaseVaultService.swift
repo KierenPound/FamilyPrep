@@ -229,17 +229,17 @@ final class SupabaseVaultService {
             )
             isConfigured = true
             Task { await refreshAuthState() }
-            print("✅ SupabaseVaultService configured successfully")
+            NSLog("FamilyPrepVault %@", "✅ SupabaseVaultService configured successfully")
         } catch {
             isConfigured = false
-            print("⚠️ SupabaseVaultService not configured: \(error.localizedDescription). "
+            NSLog("FamilyPrepVault %@", "⚠️ SupabaseVaultService not configured: \(error.localizedDescription). "
                   + "Add supabase-swift SPM package and set SUPABASE_URL + SUPABASE_ANON_KEY.")
         }
         #else
         isConfigured = false
-        print("⚠️ Supabase SDK not installed. To enable the cloud vault:")
-        print("   1. Add supabase-swift via SPM: https://github.com/supabase-community/supabase-swift")
-        print("   2. Configure SUPABASE_URL + SUPABASE_ANON_KEY in Info.plist (see file header)")
+        NSLog("FamilyPrepVault %@", "⚠️ Supabase SDK not installed. To enable the cloud vault:")
+        NSLog("FamilyPrepVault %@", "   1. Add supabase-swift via SPM: https://github.com/supabase-community/supabase-swift")
+        NSLog("FamilyPrepVault %@", "   2. Configure SUPABASE_URL + SUPABASE_ANON_KEY in Info.plist (see file header)")
         #endif
     }
 
@@ -558,7 +558,10 @@ final class SupabaseVaultService {
     // MARK: - Estate lifecycle
 
     #if canImport(Supabase)
-    private func ensureDefaultOwnerEstate(name: String = "My Estate") async throws -> UUID {
+    private func ensureDefaultOwnerEstate(
+        name: String = "My Estate",
+        preferredID: UUID? = nil
+    ) async throws -> UUID {
         guard supabase != nil else {
             throw makeNotConfiguredError()
         }
@@ -567,24 +570,43 @@ final class SupabaseVaultService {
             let id: UUID
         }
 
-        // Query existing estates
+        let ownerID = await currentUserIDOptional()
+
+        // If the caller already has a local ID they want to keep, try to find an
+        // authenticated owner row first, otherwise fall back to the shared
+        // "most recent" lookup for backwards compatibility.
+        if let preferred = preferredID, ownerID != nil {
+            do {
+                let q = try table("estates")
+                var fb = select(q, columns: "id, owner_id")
+                fb = filter(fb, method: "eq", column: "id", value: preferred.uuidString as Any?)
+                let rows: [EstateRow] = try await executeDecoded(fb, as: EstateRow.self)
+                if !rows.isEmpty {
+                    try await ensureOwnerBackingRows(estateID: preferred, ownerID: ownerID!)
+                    return preferred
+                }
+            } catch { /* fall through to create path */ }
+        }
+
         let q = try table("estates")
         let selected = select(q, columns: "id")
         let ordered = order(selected, column: "created_at", ascending: true)
         let limited = limit(ordered, 1)
 
-        // Query existing estates (if RLS blocks anon/guest, this returns 0 rows
-        // instead of throwing — ensureDefaultOwnerEstate simply creates a new one).
         let existingIDs: [EstateRow]
         do {
             existingIDs = try await executeDecoded(limited, as: EstateRow.self)
         } catch {
             existingIDs = []
         }
-        if let first = existingIDs.first { return first.id }
+        if let first = existingIDs.first {
+            if let o = ownerID {
+                try await ensureOwnerBackingRows(estateID: first.id, ownerID: o)
+            }
+            return first.id
+        }
 
-        let ownerID = await currentUserIDOptional()
-        let newEstateID = UUID()
+        let newEstateID = preferredID ?? UUID()
 
         var estatePayload: [String: Any] = [
             "id": newEstateID.uuidString,
@@ -601,22 +623,91 @@ final class SupabaseVaultService {
         }
 
         if let o = ownerID {
-            let accessPayload: [String: Any] = [
-                "estate_id": newEstateID.uuidString,
-                "user_id": o.uuidString,
-                "role": EstateRole.owner.rawValue,
-                "status": "accepted"
-            ]
-            do {
-                let accessQ = try table("estate_access")
-                let accessFb = try insert(accessQ, accessPayload)
-                _ = try await executeVoid(accessFb)
-            } catch {
-                throw error
-            }
+            try await ensureOwnerBackingRows(estateID: newEstateID, ownerID: o)
         }
 
         return newEstateID
+    }
+
+    private func ensureOwnerBackingRows(estateID: UUID, ownerID: UUID) async throws {
+        guard let supabase = supabase else { throw makeNotConfiguredError() }
+
+        struct SimpleID: Decodable, Identifiable { let id: UUID }
+
+        do {
+            NSLog("FamilyPrepVault %@", "👤 [ensureOwnerBackingRows] estate=\(estateID.uuidString) owner=\(ownerID.uuidString) — checking estates row…")
+            let estatesQ = try table("estates")
+            var estatesFB = select(estatesQ, columns: "id, owner_id")
+            estatesFB = filter(estatesFB, method: "eq", column: "id", value: estateID.uuidString as Any?)
+            let estatesRows: [SimpleID] = try await executeDecoded(estatesFB, as: SimpleID.self)
+
+            if estatesRows.isEmpty {
+                NSLog("FamilyPrepVault %@", "👤 → no estates row found; INSERTING estates (id + owner_id)…")
+                let payload: [String: Any] = [
+                    "id": estateID.uuidString,
+                    "owner_id": ownerID.uuidString,
+                    "name": "My Estate"
+                ]
+                let insertQ = try table("estates")
+                let insertFB = try insert(insertQ, payload)
+                _ = try await executeVoid(insertFB)
+                NSLog("FamilyPrepVault %@", "👤 ✅ estates INSERT ok")
+            } else {
+                NSLog("FamilyPrepVault %@", "👤 → estates row found; UPDATING owner_id=\(ownerID.uuidString)…")
+                let updatePayload: [String: Any] = [
+                    "owner_id": ownerID.uuidString
+                ]
+                let updateQ = try table("estates")
+                var updateFB = try update(updateQ, updatePayload)
+                updateFB = filter(updateFB, method: "eq", column: "id", value: estateID.uuidString as Any?)
+                _ = try await executeVoid(updateFB)
+                NSLog("FamilyPrepVault %@", "👤 ✅ estates UPDATE ok")
+            }
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepVault %@", "👤 ⚠️ estates stage error: code=\(ns.code) msg=\(ns.localizedDescription)")
+            if !ns.localizedDescription.lowercased().contains("duplicate key")
+                && !ns.localizedDescription.lowercased().contains("23505") {
+                throw error
+            }
+            NSLog("FamilyPrepVault %@", "👤 → (duplicate key → safe to ignore)")
+        }
+
+        do {
+            NSLog("FamilyPrepVault %@", "👤 [ensureOwnerBackingRows] estate=\(estateID.uuidString) — checking owner access row…")
+            let accessQ = try table("estate_access")
+            var accessFB = select(accessQ, columns: "id")
+            accessFB = filter(accessFB, method: "eq", column: "estate_id", value: estateID.uuidString as Any?)
+            accessFB = filter(accessFB, method: "eq", column: "role", value: EstateRole.owner.rawValue as Any?)
+            accessFB = filter(accessFB, method: "eq", column: "user_id", value: ownerID.uuidString as Any?)
+            let existing: [SimpleID] = try await executeDecoded(accessFB, as: SimpleID.self)
+            guard existing.isEmpty else {
+                NSLog("FamilyPrepVault %@", "👤 ✅ owner access row already present — nothing to do")
+                return
+            }
+
+            NSLog("FamilyPrepVault %@", "👤 → no owner access row; INSERTING estate_access (owner/accepted)…")
+            let payload: [String: Any] = [
+                "estate_id": estateID.uuidString,
+                "user_id": ownerID.uuidString,
+                "role": EstateRole.owner.rawValue,
+                "status": "accepted"
+            ]
+            let insertQ = try table("estate_access")
+            let insertFB = try insert(insertQ, payload)
+            _ = try await executeVoid(insertFB)
+            NSLog("FamilyPrepVault %@", "👤 ✅ owner estate_access INSERT ok")
+        } catch {
+            let ns = error as NSError
+            let msg = ns.localizedDescription.lowercased()
+            NSLog("FamilyPrepVault %@", "👤 ⚠️ access stage error: code=\(ns.code) msg=\(ns.localizedDescription)")
+            if msg.contains("duplicate key") || msg.contains("23505")
+                || msg.contains("unique_user_per_estate") {
+                NSLog("FamilyPrepVault %@", "👤 → (duplicate/unique → safe to ignore)")
+                return
+            }
+            throw error
+        }
     }
 
     private func randomInviteCode(length: Int = 6) -> String {
@@ -742,9 +833,24 @@ final class SupabaseVaultService {
     }
 
     @discardableResult
-    func createDefaultOwnerEstate(name: String = "My Estate") async throws -> UUID {
+    func createDefaultOwnerEstate(
+        name: String = "My Estate",
+        preferredID: UUID? = nil
+    ) async throws -> UUID {
         #if canImport(Supabase)
-        return try await ensureDefaultOwnerEstate(name: name)
+        return try await ensureDefaultOwnerEstate(name: name, preferredID: preferredID)
+        #else
+        throw makeNotConfiguredError()
+        #endif
+    }
+
+    @discardableResult
+    func ensureOwnerCloudBacking(estateID: UUID, name: String = "My Estate") async throws -> UUID {
+        #if canImport(Supabase)
+        guard supabase != nil else { throw makeNotConfiguredError() }
+        let uid = try await currentUserID()
+        try await ensureOwnerBackingRows(estateID: estateID, ownerID: uid)
+        return estateID
         #else
         throw makeNotConfiguredError()
         #endif
@@ -788,7 +894,8 @@ final class SupabaseVaultService {
     func generateExecutorInvite(estateID: UUID, email: String) async throws -> ExecutorInvite {
         #if canImport(Supabase)
         guard supabase != nil else { throw makeNotConfiguredError() }
-        guard await currentUserIDOptional() != nil else {
+        guard let ownerID = await currentUserIDOptional() else {
+            NSLog("FamilyPrepVault %@", "🔒 [generateExecutorInvite] ❌ no authenticated Supabase session — skipping DB call")
             throw NSError(domain: "SupabaseVault", code: 202,
                           userInfo: [
                             NSLocalizedDescriptionKey: """
@@ -798,13 +905,58 @@ final class SupabaseVaultService {
                             """
                           ])
         }
+        NSLog("FamilyPrepVault %@", "🔒 [generateExecutorInvite] session ownerID = \(ownerID.uuidString)")
+        NSLog("FamilyPrepVault %@", "🔒 → estateID from AppState = \(estateID.uuidString)")
+        NSLog("FamilyPrepVault %@", "🔒 → isAuthenticated = \(isAuthenticated)")
+
+        do {
+            NSLog("FamilyPrepVault %@", "🔒 → PREFLIGHT: SELECT * FROM estate_access WHERE user_id = ownerID (check auth.link works)")
+            let pfQB1 = try table("estate_access")
+            var pfFB1 = select(pfQB1, columns: "id, estate_id, role, status, user_id")
+            pfFB1 = filter(pfFB1, method: "eq", column: "user_id", value: ownerID.uuidString as Any?)
+            pfFB1 = filter(pfFB1, method: "eq", column: "status", value: "accepted" as Any?)
+            let pfRows1: [EstateAccessRecord] = try await executeDecoded(pfFB1, as: EstateAccessRecord.self)
+            NSLog("FamilyPrepVault %@", "🔒 → preflight user-owned rows: \(pfRows1.count) rows → \(pfRows1.map { "\($0.role):\($0.estateID.uuidString.prefix(8))" }.joined(separator: ", "))")
+
+            NSLog("FamilyPrepVault %@", "🔒 → PREFLIGHT: SELECT * FROM estates WHERE id = AppState.estateID (check RLS on estates)")
+            struct EstateDiag: Decodable, Identifiable {
+                let id: UUID
+                enum CodingKeys: String, CodingKey { case id }
+            }
+            let pfQB2 = try table("estates")
+            var pfFB2 = select(pfQB2, columns: "id, owner_id, name")
+            pfFB2 = filter(pfFB2, method: "eq", column: "id", value: estateID.uuidString as Any?)
+            let pfRows2: [EstateDiag] = try await executeDecoded(pfFB2, as: EstateDiag.self)
+            NSLog("FamilyPrepVault %@", "🔒 → preflight AppState-estate row: \(pfRows2.count) rows")
+
+            if pfRows2.isEmpty && pfRows1.isEmpty {
+                NSLog("FamilyPrepVault %@", "🔒 ⚠️ NO matching estates or estate_access rows for this user — onboarding fallback path, will try to INSERT backing rows now")
+            } else if !pfRows1.isEmpty {
+                if !pfRows1.contains(where: { $0.estateID == estateID }) {
+                    NSLog("FamilyPrepVault %@", "🔒 ⚠️ AppState's estateID \(estateID.uuidString.prefix(8)) NOT in user's accepted estates → backing-rows insert is required")
+                }
+            }
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepVault %@", "🔒 ⚠️ PREFLIGHT failed with code=\(ns.code) msg=\(ns.localizedDescription). RLS/network is broken at the SELECT layer.")
+        }
+
+        do {
+            try await ensureOwnerBackingRows(estateID: estateID, ownerID: ownerID)
+            NSLog("FamilyPrepVault %@", "🔒 ✅ ensureOwnerBackingRows completed")
+        } catch {
+            let ns = error as NSError
+            NSLog("FamilyPrepVault %@", "🔒 ❌ ensureOwnerBackingRows FAILED: code=\(ns.code) msg=\(ns.localizedDescription)")
+            throw ns
+        }
+
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedEmail.isEmpty else {
             throw NSError(domain: "SupabaseVault", code: 100,
                           userInfo: [NSLocalizedDescriptionKey: "Executor email is required."])
         }
         let maxAttempts = 10
-        for _ in 0..<maxAttempts {
+        for attempt in 0..<maxAttempts {
             let code = randomInviteCode(length: 6)
             let payload: [String: Any] = [
                 "estate_id": estateID.uuidString,
@@ -817,16 +969,32 @@ final class SupabaseVaultService {
                 let qb = try table("estate_access")
                 let fb = try insert(qb, payload)
                 _ = try await executeVoid(fb)
+                NSLog("FamilyPrepVault %@", "🔒 ✅ invite INSERT OK on attempt \(attempt+1): code=\(code)")
                 return ExecutorInvite(inviteCode: code, invitedEmail: normalizedEmail, estateID: estateID)
             } catch {
                 let ns = error as NSError
                 let msg = ns.localizedDescription.lowercased()
+                NSLog("FamilyPrepVault %@", "🔒 invite INSERT attempt \(attempt+1) error: code=\(ns.code) msg=\(ns.localizedDescription)")
                 let isUnique = msg.contains("invite_code_unique")
                     || msg.contains("unique_pending_email")
                     || msg.contains("duplicate key")
                     || msg.contains("23505")
-                if !isUnique { throw error }
-                continue
+                if isUnique { continue }
+                if msg.contains("permission denied") || msg.contains("row level security")
+                    || msg.contains("policy") || msg.contains("estate_access")
+                    || ns.code == 403 || msg.contains("42501") {
+                    throw NSError(domain: "SupabaseVault", code: 203,
+                                  userInfo: [
+                                    NSLocalizedDescriptionKey: """
+                                    Your estate isn't fully linked in Supabase yet.
+                                    Please re-run the onboarding flow (or sign out and back in).
+                                    If the problem persists, open Supabase → SQL Editor and run the
+                                    file supabase/migrations/ensure_estate_rls_and_grants.sql again,
+                                    then check the auth.users table contains your signed-in account.
+                                    """
+                                  ])
+                }
+                throw error
             }
         }
         throw NSError(domain: "SupabaseVault", code: 100,
