@@ -1,105 +1,17 @@
 -- ============================================================================
--- FamilyPrep: Master Consolidated Migration Script (Fully Idempotent)
--- Target: https://mpsygpgaakdtlgjzmbtr.supabase.co
+-- FamilyPrep: Idempotent RLS + Grants Alignment (safe to re-run)
+-- Ensures remote Supabase matches recreate_all_tables.sql exactly, including
+-- SECURITY DEFINER helpers, role coverage (authenticated/anon), and policies.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- 1. EXTENSIONS & SCHEMA GRANTS
+-- 1. SCHEMA GRANTS
 -- ---------------------------------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT USAGE ON SCHEMA storage TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 2. TABLES & COLUMN GUARANTEES
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.estates (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    name        text NOT NULL DEFAULT 'My Estate',
-    created_at  timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.estate_access (
-    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    estate_id     uuid NOT NULL REFERENCES public.estates(id) ON DELETE CASCADE,
-    user_id       uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-    role          text NOT NULL CHECK (role IN ('owner', 'executor')),
-    created_at    timestamptz NOT NULL DEFAULT now()
-);
-
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access ALTER COLUMN user_id DROP NOT NULL;
-EXCEPTION WHEN others THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access ADD COLUMN status text;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access ADD COLUMN invited_email text;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access ADD COLUMN invite_code char(6);
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
-
-UPDATE public.estate_access
-   SET status = 'accepted'
- WHERE status IS NULL
-   AND user_id IS NOT NULL;
-
-ALTER TABLE public.estate_access 
-    DROP CONSTRAINT IF EXISTS estate_access_status_check;
-
-ALTER TABLE public.estate_access
-    ADD CONSTRAINT estate_access_status_check
-    CHECK (status IN ('pending', 'accepted', 'revoked'));
-
-ALTER TABLE public.estate_access 
-    DROP CONSTRAINT IF EXISTS estate_access_invite_code_unique;
-
-ALTER TABLE public.estate_access
-    ADD CONSTRAINT estate_access_invite_code_unique UNIQUE (invite_code);
-
-CREATE TABLE IF NOT EXISTS public.documents (
-    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    estate_id     uuid NOT NULL REFERENCES public.estates(id) ON DELETE CASCADE,
-    title         text NOT NULL,
-    storage_path  text NOT NULL,
-    category      text,
-    created_at    timestamptz NOT NULL DEFAULT now()
-);
-
--- ---------------------------------------------------------------------------
--- 3. INDEXES
--- ---------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_documents_estate_id ON public.documents(estate_id);
-CREATE INDEX IF NOT EXISTS idx_documents_category ON public.documents(category);
-
-DROP INDEX IF EXISTS public.estate_access_unique_user_per_estate;
-DROP INDEX IF EXISTS public.estate_access_unique_user_per_estate_partial;
-CREATE UNIQUE INDEX IF NOT EXISTS estate_access_unique_user_per_estate_partial
-    ON public.estate_access (estate_id, user_id)
-    WHERE user_id IS NOT NULL;
-
-DROP INDEX IF EXISTS public.estate_access_unique_pending_email_per_estate;
-CREATE UNIQUE INDEX IF NOT EXISTS estate_access_unique_pending_email_per_estate
-    ON public.estate_access (estate_id, invited_email)
-    WHERE status = 'pending' AND invited_email IS NOT NULL;
-
--- ---------------------------------------------------------------------------
--- 4. TABLE & SEQUENCE GRANTS (Explicit permissions for authenticated & anon)
+-- 2. TABLE & SEQUENCE GRANTS (Explicit permissions for authenticated & anon)
 -- ---------------------------------------------------------------------------
 GRANT ALL ON public.estates TO authenticated;
 GRANT ALL ON public.estate_access TO authenticated;
@@ -112,31 +24,14 @@ GRANT SELECT ON public.documents TO anon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 5. ROW LEVEL SECURITY (RLS) ENABLEMENT
+-- 3. RLS ENABLEMENT (idempotent, no-op if already enabled)
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.estates         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.estate_access   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents       ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
--- 6. DYNAMIC POLICY CLEANUP (Strips legacy/duplicate policies to avoid loops)
--- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-    pol RECORD;
-BEGIN
-    FOR pol IN 
-        SELECT policyname, tablename 
-        FROM pg_policies 
-        WHERE schemaname = 'public' 
-          AND tablename IN ('estate_access', 'estates', 'documents')
-    LOOP
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
-    END LOOP;
-END $$;
-
--- ---------------------------------------------------------------------------
--- 7. SECURITY DEFINER HELPERS (With row_security = off)
+-- 4. SECURITY DEFINER HELPERS (SET row_security = off — breaks recursion)
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.is_estate_owner(check_estate_id uuid)
@@ -146,10 +41,12 @@ SET search_path = public, pg_temp
 SET row_security = off
 AS $$
     SELECT EXISTS (
-        SELECT 1 
-        FROM public.estates 
-        WHERE id = check_estate_id 
-        AND owner_id = auth.uid()
+        SELECT 1
+        FROM public.estates
+        WHERE id = check_estate_id
+          AND owner_id IS NOT NULL
+          AND auth.uid() IS NOT NULL
+          AND owner_id = auth.uid()
     );
 $$;
 
@@ -191,7 +88,24 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- 8. POLICIES: public.estates
+-- 5. DYNAMIC POLICY CLEANUP (Strips prior policies to avoid conflicts)
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+    pol RECORD;
+BEGIN
+    FOR pol IN
+        SELECT policyname, tablename
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('estate_access', 'estates', 'documents')
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
+    END LOOP;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- 6. POLICIES: public.estates
 -- ---------------------------------------------------------------------------
 CREATE POLICY estates_select_any_linked ON public.estates
     FOR SELECT
@@ -215,7 +129,7 @@ CREATE POLICY estates_owner_delete ON public.estates
     USING ( auth.uid() = owner_id );
 
 -- ---------------------------------------------------------------------------
--- 9. POLICIES: public.estate_access
+-- 7. POLICIES: public.estate_access
 -- ---------------------------------------------------------------------------
 CREATE POLICY estate_access_select_linked ON public.estate_access
     FOR SELECT
@@ -269,7 +183,7 @@ CREATE POLICY estate_access_claim_pending_invite ON public.estate_access
     );
 
 -- ---------------------------------------------------------------------------
--- 10. POLICIES: public.documents
+-- 8. POLICIES: public.documents
 -- ---------------------------------------------------------------------------
 CREATE POLICY documents_select_any_linked ON public.documents
     FOR SELECT
@@ -293,8 +207,13 @@ CREATE POLICY documents_owner_delete ON public.documents
     USING ( estate_id IN (SELECT public.get_allowed_estate_ids('owner')) );
 
 -- ---------------------------------------------------------------------------
--- 11. STORAGE BUCKET & STORAGE POLICIES
+-- 9. STORAGE GRANTS (ensure bucket + storage policies)
 -- ---------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA storage TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
+GRANT SELECT ON storage.objects TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA storage TO authenticated;
+
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
     'estate-documents',
@@ -305,11 +224,9 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-GRANT USAGE ON SCHEMA storage TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
-GRANT SELECT ON storage.objects TO anon;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA storage TO authenticated;
-
+-- ---------------------------------------------------------------------------
+-- 10. STORAGE RLS POLICIES
+-- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS estate_docs_select_linked ON storage.objects;
 CREATE POLICY estate_docs_select_linked ON storage.objects
     FOR SELECT

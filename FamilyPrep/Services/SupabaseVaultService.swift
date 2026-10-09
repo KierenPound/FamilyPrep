@@ -754,13 +754,13 @@ final class SupabaseVaultService {
     func claimExecutorInviteCode(_ rawCode: String) async throws -> UUID {
         #if canImport(Supabase)
         guard supabase != nil else { throw makeNotConfiguredError() }
+        let uid = try await currentUserID()
         let trimmedCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard trimmedCode.count == 6 else {
             throw NSError(domain: "SupabaseVault", code: 100,
                           userInfo: [NSLocalizedDescriptionKey: "Invite code must be 6 characters."])
         }
         do {
-            let uid = try await currentUserID()
             let payload: [String: Any] = [
                 "user_id": uid.uuidString,
                 "status": "accepted"
@@ -788,6 +788,16 @@ final class SupabaseVaultService {
     func generateExecutorInvite(estateID: UUID, email: String) async throws -> ExecutorInvite {
         #if canImport(Supabase)
         guard supabase != nil else { throw makeNotConfiguredError() }
+        guard await currentUserIDOptional() != nil else {
+            throw NSError(domain: "SupabaseVault", code: 202,
+                          userInfo: [
+                            NSLocalizedDescriptionKey: """
+                            Sign in required to send executor invites.
+                            Invite codes link your cloud identity as the estate owner.
+                            You can skip this step and return later after signing in.
+                            """
+                          ])
+        }
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedEmail.isEmpty else {
             throw NSError(domain: "SupabaseVault", code: 100,
