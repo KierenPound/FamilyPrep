@@ -1,7 +1,6 @@
 -- ============================================================================
--- FamilyPrep: Master Consolidated Migration Script
+-- FamilyPrep: Master Consolidated Migration Script (Fully Idempotent)
 -- Target: https://mpsygpgaakdtlgjzmbtr.supabase.co
--- Execution-Ready Master Script
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -16,7 +15,6 @@ GRANT USAGE ON SCHEMA storage TO anon, authenticated;
 -- 2. TABLES & COLUMN GUARANTEES
 -- ---------------------------------------------------------------------------
 
--- Table: public.estates
 CREATE TABLE IF NOT EXISTS public.estates (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -24,7 +22,6 @@ CREATE TABLE IF NOT EXISTS public.estates (
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 
--- Table: public.estate_access
 CREATE TABLE IF NOT EXISTS public.estate_access (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     estate_id     uuid NOT NULL REFERENCES public.estates(id) ON DELETE CASCADE,
@@ -33,7 +30,6 @@ CREATE TABLE IF NOT EXISTS public.estate_access (
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- Ensure columns exist BEFORE index creation
 DO $$
 BEGIN
     ALTER TABLE public.estate_access ALTER COLUMN user_id DROP NOT NULL;
@@ -58,28 +54,24 @@ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
--- Backfill legacy rows and enforce constraints
 UPDATE public.estate_access
    SET status = 'accepted'
  WHERE status IS NULL
    AND user_id IS NOT NULL;
 
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access
-        ADD CONSTRAINT estate_access_status_check
-        CHECK (status IN ('pending', 'accepted', 'revoked'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE public.estate_access 
+    DROP CONSTRAINT IF EXISTS estate_access_status_check;
 
-DO $$
-BEGIN
-    ALTER TABLE public.estate_access
-        ADD CONSTRAINT estate_access_invite_code_unique UNIQUE (invite_code);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE public.estate_access
+    ADD CONSTRAINT estate_access_status_check
+    CHECK (status IN ('pending', 'accepted', 'revoked'));
 
--- Table: public.documents
+ALTER TABLE public.estate_access 
+    DROP CONSTRAINT IF EXISTS estate_access_invite_code_unique;
+
+ALTER TABLE public.estate_access
+    ADD CONSTRAINT estate_access_invite_code_unique UNIQUE (invite_code);
+
 CREATE TABLE IF NOT EXISTS public.documents (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     estate_id     uuid NOT NULL REFERENCES public.estates(id) ON DELETE CASCADE,
@@ -90,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
 );
 
 -- ---------------------------------------------------------------------------
--- 3. INDEXES & CONSTRAINTS
+-- 3. INDEXES
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_documents_estate_id ON public.documents(estate_id);
 CREATE INDEX IF NOT EXISTS idx_documents_category ON public.documents(category);
@@ -125,13 +117,30 @@ ALTER TABLE public.estate_access   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents       ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
--- 6. SECURITY DEFINER HELPERS
+-- 6. SECURITY DEFINER HELPERS (With row_security = off to prevent recursion)
 -- ---------------------------------------------------------------------------
 
--- Parametrized helper
+-- 6a. Estate Ownership Lookup Helper
+CREATE OR REPLACE FUNCTION public.is_estate_owner(check_estate_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+SET row_security = off
+AS $$
+    SELECT EXISTS (
+        SELECT 1 
+        FROM public.estates 
+        WHERE id = check_estate_id 
+        AND owner_id = auth.uid()
+    );
+$$;
+
+-- 6b. Parametrized Allowed Estate IDs Helper
 CREATE OR REPLACE FUNCTION public.get_allowed_estate_ids(requested_role text)
 RETURNS SETOF uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+SET row_security = off
 AS $$
     SELECT estate_id
     FROM   public.estate_access
@@ -140,18 +149,22 @@ AS $$
     AND    (requested_role IS NULL OR role = requested_role);
 $$;
 
--- Zero-argument overload
+-- 6c. Zero-argument Overload Helper
 CREATE OR REPLACE FUNCTION public.get_allowed_estate_ids()
 RETURNS SETOF uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+SET row_security = off
 AS $$
     SELECT public.get_allowed_estate_ids(NULL::text);
 $$;
 
--- Role resolver helper
+-- 6d. Role Resolver Helper
 CREATE OR REPLACE FUNCTION public.get_estate_role_for_current_user(requested_estate_id uuid DEFAULT NULL)
 RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+SET row_security = off
 AS $$
     SELECT role
     FROM   public.estate_access
@@ -193,30 +206,46 @@ CREATE POLICY estates_owner_delete ON public.estates
 -- ---------------------------------------------------------------------------
 -- 8. POLICIES: public.estate_access
 -- ---------------------------------------------------------------------------
+-- IMPORTANT: estate_access policies call public.is_estate_owner() which runs
+--            with row_security = off to safely evaluate ownership on estates
+--            without re-triggering RLS on public.estates.
+
 DROP POLICY IF EXISTS estate_access_select_linked ON public.estate_access;
 CREATE POLICY estate_access_select_linked ON public.estate_access
     FOR SELECT
     TO anon, authenticated
-    USING ( estate_id IN (SELECT public.get_allowed_estate_ids()) );
+    USING (
+        user_id = auth.uid()
+        OR public.is_estate_owner(estate_id)
+        OR (status = 'pending' AND user_id IS NULL AND invite_code IS NOT NULL)
+    );
 
 DROP POLICY IF EXISTS estate_access_owner_insert ON public.estate_access;
 CREATE POLICY estate_access_owner_insert ON public.estate_access
     FOR INSERT
     TO authenticated
-    WITH CHECK ( estate_id IN (SELECT public.get_allowed_estate_ids('owner')) );
+    WITH CHECK (
+        public.is_estate_owner(estate_id)
+    );
 
 DROP POLICY IF EXISTS estate_access_owner_update ON public.estate_access;
 CREATE POLICY estate_access_owner_update ON public.estate_access
     FOR UPDATE
     TO authenticated
-    USING ( estate_id IN (SELECT public.get_allowed_estate_ids('owner')) )
-    WITH CHECK ( estate_id IN (SELECT public.get_allowed_estate_ids('owner')) );
+    USING (
+        public.is_estate_owner(estate_id)
+    )
+    WITH CHECK (
+        public.is_estate_owner(estate_id)
+    );
 
 DROP POLICY IF EXISTS estate_access_owner_delete ON public.estate_access;
 CREATE POLICY estate_access_owner_delete ON public.estate_access
     FOR DELETE
     TO authenticated
-    USING ( estate_id IN (SELECT public.get_allowed_estate_ids('owner')) );
+    USING (
+        public.is_estate_owner(estate_id)
+    );
 
 DROP POLICY IF EXISTS estate_access_claim_pending_invite ON public.estate_access;
 CREATE POLICY estate_access_claim_pending_invite ON public.estate_access

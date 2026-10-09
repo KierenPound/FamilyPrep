@@ -366,7 +366,7 @@ struct WelcomeOwnerView: View {
             errorMessage = "Cloud vault not configured. Install the supabase-swift SPM package and set SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist, or skip this step and continue offline."
             return
         }
-        Task {
+        Task { @MainActor in
             isGenerating = true
             defer { isGenerating = false }
             do {
@@ -375,6 +375,9 @@ struct WelcomeOwnerView: View {
                     email: executorEmail
                 )
                 generatedInvite = invite
+                if MFMailComposeViewController.canSendMail() {
+                    showMailComposer = true
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
