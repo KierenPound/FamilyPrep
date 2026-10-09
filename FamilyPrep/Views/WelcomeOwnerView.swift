@@ -57,9 +57,12 @@ struct WelcomeOwnerView: View {
                 }
             }
             .task {
-                let profile = await SupabaseVaultService.shared.currentUserProfile()
+                let service = SupabaseVaultService.shared
+                NSLog("FamilyPrepUI WelcomeOwnerView appeared — service.isConfigured=\(service.isConfigured), isAuthenticated=\(service.isAuthenticated), estateID=\(estateID.uuidString)")
+                let profile = await service.currentUserProfile()
                 userEmail = profile.email
                 userDisplayName = profile.displayName
+                NSLog("FamilyPrepUI WelcomeOwnerView profile — email=\(String(describing: profile.email)), displayName=\(String(describing: profile.displayName))")
             }
             .sheet(isPresented: $showMailComposer) {
                 if MFMailComposeViewController.canSendMail(), let invite = generatedInvite {
@@ -78,7 +81,15 @@ struct WelcomeOwnerView: View {
             ) { _ in
                 Button("OK") { errorMessage = nil }
             } message: { msg in
-                Text(msg)
+                // LAST-LINE-OF-DEFENCE: beautify AGAIN at render-time. Any raw
+                // Postgres/RLS "permission denied" that leaked past every other
+                // layer is caught here and never shown to the user verbatim.
+                let wrappedError = NSError(
+                    domain: "FamilyPrepUI",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: msg]
+                )
+                Text(HumanReadableError.message(for: wrappedError))
             }
         }
     }
@@ -368,7 +379,7 @@ struct WelcomeOwnerView: View {
             NSLog("FamilyPrepUI ❌ early return — SupabaseVaultService.isConfigured is false")
             return
         }
-        Task { @MainActor in
+        Task {
             isGenerating = true
             defer { isGenerating = false }
             do {
@@ -379,9 +390,6 @@ struct WelcomeOwnerView: View {
                 )
                 NSLog("FamilyPrepUI ✅ SUCCESS — invite code = \(invite.inviteCode)")
                 generatedInvite = invite
-                if MFMailComposeViewController.canSendMail() {
-                    showMailComposer = true
-                }
             } catch {
                 let ns = error as NSError
                 NSLog("FamilyPrepUI ❌ ERROR — domain=\(ns.domain) code=\(ns.code) msg=\(ns.localizedDescription) userInfo=\(ns.userInfo)")
