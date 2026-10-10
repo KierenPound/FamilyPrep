@@ -655,7 +655,7 @@ final class SupabaseVaultService {
     }
 
     private func ensureOwnerBackingRows(estateID: UUID, ownerID: UUID) async throws {
-        guard let supabase = supabase else { throw makeNotConfiguredError() }
+        guard supabase != nil else { throw makeNotConfiguredError() }
 
         struct SimpleID: Decodable, Identifiable { let id: UUID }
 

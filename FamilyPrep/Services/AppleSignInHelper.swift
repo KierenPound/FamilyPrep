@@ -3,12 +3,12 @@ import AuthenticationServices
 import SwiftUI
 import CryptoKit
 
-@MainActor
 final class AppleSignInCoordinator: NSObject,
     ASAuthorizationControllerDelegate,
-    ASAuthorizationControllerPresentationContextProviding
+    ASAuthorizationControllerPresentationContextProviding,
+    @unchecked Sendable
 {
-    struct AppleCredential {
+    struct AppleCredential: Sendable {
         let identityToken: String
         let nonce: String
         let email: String?
@@ -16,7 +16,7 @@ final class AppleSignInCoordinator: NSObject,
         let familyName: String?
     }
 
-    enum AuthError: LocalizedError {
+    enum AuthError: LocalizedError, Sendable {
         case noWindow
         case noIdentityToken
         case authorizationFailed(String)
@@ -33,8 +33,15 @@ final class AppleSignInCoordinator: NSObject,
         }
     }
 
-    private var nonceState: String?
-    private var continuation: CheckedContinuation<AppleCredential, Error>?
+    private let lock = NSLock()
+    private nonisolated(unsafe) weak var presentationAnchorWindow: ASPresentationAnchor?
+    private nonisolated(unsafe) var nonceState: String?
+    private nonisolated(unsafe) var continuation: CheckedContinuation<AppleCredential, Error>?
+
+    init(presentationAnchorWindow: ASPresentationAnchor) {
+        self.presentationAnchorWindow = presentationAnchorWindow
+        super.init()
+    }
 
     func start() async throws -> AppleCredential {
         let provider = ASAuthorizationAppleIDProvider()
@@ -43,83 +50,71 @@ final class AppleSignInCoordinator: NSObject,
 
         let (raw, hashed) = Self.makeNonce()
         request.nonce = hashed
-        nonceState = raw
+        setNonce(raw)
 
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
 
         return try await withCheckedThrowingContinuation { cont in
-            self.continuation = cont
+            setContinuation(cont)
             controller.performRequests()
         }
     }
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        Task { @MainActor in
-            _ = self
+        guard let window = presentationAnchorWindow else {
+            preconditionFailure("AppleSignInCoordinator was not provided a presentation anchor window.")
         }
-        return UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow) ?? UIWindow()
+        return window
     }
 
     nonisolated func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
-        Task { @MainActor in
-            guard let cont = self.continuation else { return }
-            defer {
-                self.continuation = nil
-                self.nonceState = nil
-            }
+        let (cont, nonce) = takeContinuationAndNonce()
+        guard let cont = cont else { return }
 
-            guard let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                cont.resume(throwing: AuthError.authorizationFailed("Unexpected credential type."))
-                return
-            }
-
-            guard let tokenData = appleCredential.identityToken,
-                  let tokenString = String(data: tokenData, encoding: .utf8),
-                  let nonce = self.nonceState else {
-                cont.resume(throwing: AuthError.noIdentityToken)
-                return
-            }
-
-            let givenName = appleCredential.fullName?.givenName
-            let familyName = appleCredential.fullName?.familyName
-            let email = appleCredential.email
-
-            let cred = AppleCredential(
-                identityToken: tokenString,
-                nonce: nonce,
-                email: email,
-                givenName: givenName,
-                familyName: familyName
-            )
-            cont.resume(returning: cred)
+        guard let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            cont.resume(throwing: AuthError.authorizationFailed("Unexpected credential type."))
+            return
         }
+
+        guard let tokenData = appleCredential.identityToken,
+              let tokenString = String(data: tokenData, encoding: .utf8),
+              let nonce = nonce else {
+            cont.resume(throwing: AuthError.noIdentityToken)
+            return
+        }
+
+        let givenName = appleCredential.fullName?.givenName
+        let familyName = appleCredential.fullName?.familyName
+        let email = appleCredential.email
+
+        let cred = AppleCredential(
+            identityToken: tokenString,
+            nonce: nonce,
+            email: email,
+            givenName: givenName,
+            familyName: familyName
+        )
+        cont.resume(returning: cred)
     }
 
     nonisolated func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
-        Task { @MainActor in
-            guard let cont = self.continuation else { return }
-            defer {
-                self.continuation = nil
-                self.nonceState = nil
-            }
-            let ns = error as NSError
-            if ns.domain == ASAuthorizationError.errorDomain,
-               ns.code == ASAuthorizationError.canceled.rawValue {
-                cont.resume(throwing: AuthError.authorizationFailed("Sign in canceled by user."))
-            } else {
-                cont.resume(throwing: AuthError.authorizationFailed(error.localizedDescription))
-            }
+        let (cont, _) = takeContinuationAndNonce()
+        guard let cont = cont else { return }
+
+        let ns = error as NSError
+        if ns.domain == ASAuthorizationError.errorDomain,
+           ns.code == ASAuthorizationError.canceled.rawValue {
+            cont.resume(throwing: AuthError.authorizationFailed("Sign in canceled by user."))
+        } else {
+            cont.resume(throwing: AuthError.authorizationFailed(error.localizedDescription))
         }
     }
 
@@ -129,6 +124,28 @@ final class AppleSignInCoordinator: NSObject,
         let digest = SHA256.hash(data: Data(raw.utf8))
         let hashed = Data(digest).base64URLEncoded
         return (raw, hashed)
+    }
+
+    private nonisolated func setNonce(_ value: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        nonceState = value
+    }
+
+    private nonisolated func setContinuation(_ value: CheckedContinuation<AppleCredential, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        continuation = value
+    }
+
+    private nonisolated func takeContinuationAndNonce() -> (CheckedContinuation<AppleCredential, Error>?, String?) {
+        lock.lock()
+        defer {
+            continuation = nil
+            nonceState = nil
+            lock.unlock()
+        }
+        return (continuation, nonceState)
     }
 }
 
@@ -147,7 +164,6 @@ private extension Data {
     }
 }
 
-@MainActor
 struct SignInWithAppleButton: View {
     enum LabelStyle {
         case standard
@@ -156,7 +172,6 @@ struct SignInWithAppleButton: View {
 
     let style: LabelStyle
     let action: () -> Void
-    @State private var coordinator = AppleSignInCoordinator()
 
     init(style: LabelStyle = .standard, action: @escaping () -> Void) {
         self.style = style
@@ -192,6 +207,11 @@ struct SignInWithAppleButton: View {
 
 @MainActor
 func runAppleSignIn() async throws -> AppleSignInCoordinator.AppleCredential {
-    let coordinator = AppleSignInCoordinator()
+    let keyWindow = UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .first(where: \.isKeyWindow)
+        ?? UIWindow()
+    let coordinator = AppleSignInCoordinator(presentationAnchorWindow: keyWindow)
     return try await coordinator.start()
 }

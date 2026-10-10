@@ -600,6 +600,38 @@ enum HumanReadableError {
         }
 
         // -------------------------------------------------------------------
+        // 1b. Apple AuthenticationServices errors (Sign in with Apple)
+        //     Uses ASAuthorizationError raw values to avoid requiring
+        //     import AuthenticationServices everywhere the beautifier is used.
+        //     canceled=1001, failed=1004, invalidResponse=1002, notHandled=1003.
+        // -------------------------------------------------------------------
+        if domain == "com.apple.authenticationservices.authorizationerror" {
+            switch ns.code {
+            case 1000:
+                return """
+                Sign in with Apple needs an Apple Developer Program membership to work.
+                For now, tap "Setup My Estate" below to continue fully offline using
+                Family Prep's local-only vault. You can link your cloud identity later
+                from Settings once you're set up.
+                """
+            case 1001:
+                return "Sign in canceled. You can continue as a guest using Setup My Estate below."
+            case 1004:
+                return "Sign in with Apple didn't complete. Check your Apple ID in Settings → Apple ID, then try again."
+            case 1002:
+                return "Apple returned an invalid response. Please try again."
+            case 1003:
+                return "Your device couldn't handle the sign-in request. Close Family Prep and re-launch it, then try again."
+            default:
+                return """
+                Sign in with Apple couldn't complete.
+                You can still continue fully offline — tap "Setup My Estate" below to get started
+                and use Family Prep's local vault without any cloud sign-in.
+                """
+            }
+        }
+
+        // -------------------------------------------------------------------
         // 2. Catch-all known patterns: Postgres RLS, network, 4xx/5xx HTTP
         // -------------------------------------------------------------------
         if msg.contains("permission denied")
